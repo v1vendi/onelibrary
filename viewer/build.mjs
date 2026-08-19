@@ -23,7 +23,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 /** Dependencies first: a module's IIFE runs before anything that imports it. */
 const order = [
   'sqlcipher.js', 'sqlite.js', 'sqlite_write.js', 'anlz.js',
-  'waveform.js', 'player.js', 'editor.js', 'app.js',
+  'waveform.js', 'player.js', 'deck.js', 'editor.js', 'app.js',
 ];
 
 const nsOf = (name) => '__' + name.replace(/\W/g, '_');

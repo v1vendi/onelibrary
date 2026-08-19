@@ -376,3 +376,190 @@ test('the bundle exposes the entry point', async () => {
   const html = readFileSync(join(root, 'dist', 'index.html'), 'utf8');
   assert.match(html, /__app_js\.init\(\);/);
 });
+
+// -- deck -------------------------------------------------------------------
+
+import { Deck } from '../src/deck.js';
+
+/**
+ * A deck with a synthetic beatgrid.
+ *
+ * Built from the prototype rather than the constructor: `new Deck()` creates a
+ * Player, which creates an `Audio` element that does not exist in Node. The
+ * tempo and beat logic under test never touches the element.
+ */
+function fakeDeck(id, bpm, beatCount = 64, startMs = 0) {
+  const d = Object.create(Deck.prototype);
+  d.id = id;
+  d.pitch = 0;
+  d.range = 6;
+  d.cuePointMs = 0;
+  d.listeners = new Set();
+  d.player = { audio: { playbackRate: 1, pause() {} } };
+  const beatMs = 60000 / bpm;
+  d.track = { bpmx100: Math.round(bpm * 100), length: 300 };
+  d.anlz = {
+    beats: Array.from({ length: beatCount }, (_, i) => ({
+      beat: (i % 4) + 1, bpm, timeMs: Math.round(startMs + i * beatMs),
+    })),
+    cues: [],
+  };
+  let pos = 0;
+  Object.defineProperty(d.player, 'positionMs', { get: () => pos, configurable: true });
+  d.player.seekMs = (ms) => { pos = ms; };
+  return d;
+}
+
+test('tempo sync sets the pitch that matches BPM', () => {
+  const a = fakeDeck('A', 128);
+  const b = fakeDeck('B', 124);
+  assert.equal(b.syncTo(a), null);
+  assert.ok(Math.abs(b.bpm - 128) < 0.01, `expected 128, got ${b.bpm}`);
+});
+
+test('sync refuses when the pitch range cannot reach', () => {
+  const a = fakeDeck('A', 128);
+  const b = fakeDeck('B', 94.4);
+  b.setRange(6);
+  const problem = b.syncTo(a);
+  assert.match(problem, /beyond ±6%/);
+  assert.equal(b.pitch, 0, 'a refused sync must not move the fader');
+});
+
+test('sync aligns the beat phase, not just the tempo', () => {
+  const a = fakeDeck('A', 120);
+  const b = fakeDeck('B', 120);
+  a.player.seekMs(a.anlz.beats[8].timeMs + 125); // a quarter into a beat
+  b.player.seekMs(b.anlz.beats[8].timeMs + 400); // most of the way through one
+  assert.equal(b.syncTo(a), null);
+  const pa = a.beatPhaseAt(), pb = b.beatPhaseAt();
+  assert.ok(Math.abs(pa.phase - pb.phase) < 0.02,
+    `phases should match: ${pa.phase.toFixed(3)} vs ${pb.phase.toFixed(3)}`);
+});
+
+test('sync corrects by less than half a beat', () => {
+  const a = fakeDeck('A', 120);
+  const b = fakeDeck('B', 120);
+  const beatMs = 500;
+  a.player.seekMs(a.anlz.beats[8].timeMs);
+  const before = b.anlz.beats[8].timeMs + 0.4 * beatMs;
+  b.player.seekMs(before);
+  b.syncTo(a);
+  assert.ok(Math.abs(b.player.positionMs - before) <= beatMs / 2 + 1,
+    'sync must not lurch the track more than half a beat');
+});
+
+test('sync still matches tempo when there is no beatgrid', () => {
+  const a = fakeDeck('A', 128);
+  const b = fakeDeck('B', 124);
+  b.anlz = { beats: [], cues: [] };
+  assert.equal(b.syncTo(a), null);
+  assert.ok(Math.abs(b.bpm - 128) < 0.01);
+});
+
+test('beat phase runs 0..1 through a beat', () => {
+  const d = fakeDeck('A', 120);
+  d.player.seekMs(d.anlz.beats[4].timeMs);
+  assert.ok(d.beatPhaseAt().phase < 0.01);
+  d.player.seekMs(d.anlz.beats[4].timeMs + 250);
+  assert.ok(Math.abs(d.beatPhaseAt().phase - 0.5) < 0.02);
+});
+
+test('the pitch fader clamps to its range', () => {
+  const d = fakeDeck('A', 128);
+  d.setRange(6);
+  d.setPitch(50);
+  assert.equal(d.pitch, 6);
+  d.setPitch(-50);
+  assert.equal(d.pitch, -6);
+});
+
+test('narrowing the range re-clamps the current pitch', () => {
+  const d = fakeDeck('A', 128);
+  d.setRange(16);
+  d.setPitch(12);
+  d.setRange(6);
+  assert.equal(d.pitch, 6);
+});
+
+// -- rendering --------------------------------------------------------------
+//
+// A smoke test with a stub canvas. The build only syntax-checks the bundle, and
+// none of the other tests touch the renderers, so a missing helper inside
+// drawDetail once threw on every frame while everything still passed.
+
+import { drawDetail, drawOverview } from '../src/waveform.js';
+
+function stubCanvas(w = 600, h = 120) {
+  const calls = { fillRect: 0, fillText: 0, fills: new Set() };
+  const ctx = {
+    set fillStyle(v) { calls.fills.add(v); },
+    get fillStyle() { return '#000'; },
+    setTransform() {}, clearRect() {}, fillRect() { calls.fillRect++; },
+    fillText() { calls.fillText++; }, beginPath() {}, moveTo() {}, lineTo() {},
+    stroke() {}, save() {}, restore() {},
+    set font(v) {}, set textAlign(v) {}, set textBaseline(v) {},
+    set strokeStyle(v) {}, set lineWidth(v) {}, set globalAlpha(v) {},
+  };
+  return { canvas: { clientWidth: w, clientHeight: h, width: w, height: h,
+                     getContext: () => ctx }, calls };
+}
+
+const WAVE = {
+  source: 'PWV5',
+  columns: Array.from({ length: 2000 }, (_, i) => ({
+    height: (i % 31) / 31, b: i % 8, g: (i * 3) % 8, r: (i * 5) % 8,
+  })),
+};
+const BEATS = Array.from({ length: 100 }, (_, i) => ({ beat: (i % 4) + 1, bpm: 120, timeMs: i * 500 }));
+const RENDER_CUES = [
+  { timeMs: 1000, isMemory: true, hotLetter: null, loopEndMs: null },
+  { timeMs: 4000, isMemory: false, hotLetter: 'A', loopEndMs: 6000 },
+];
+
+test('drawDetail paints without throwing', () => {
+  const { canvas, calls } = stubCanvas();
+  drawDetail(canvas, WAVE, RENDER_CUES, BEATS, 50000, 5000, 8000);
+  assert.ok(calls.fillRect > 50, `expected many bars, got ${calls.fillRect}`);
+});
+
+test('drawOverview paints without throwing', () => {
+  const { canvas, calls } = stubCanvas(600, 60);
+  drawOverview(canvas, WAVE, RENDER_CUES, 50000, 5000);
+  assert.ok(calls.fillRect > 50, `expected many bars, got ${calls.fillRect}`);
+});
+
+test('the colour waveform uses the three-band palette', () => {
+  const { canvas, calls } = stubCanvas();
+  drawDetail(canvas, WAVE, [], [], 50000, 5000, 8000);
+  for (const band of ['#1e5fd0', '#a9741e', '#f0ede4']) {
+    assert.ok(calls.fills.has(band), `missing band colour ${band}`);
+  }
+});
+
+test('a mono waveform falls back to a single colour', () => {
+  const { canvas, calls } = stubCanvas();
+  const mono = { source: 'PWV3', columns: WAVE.columns };
+  drawDetail(canvas, mono, [], [], 50000, 5000, 8000);
+  assert.ok(calls.fills.has('#9aa4b0'));
+  assert.ok(!calls.fills.has('#1e5fd0'), 'bands must not appear without PWV5');
+});
+
+test('renderers tolerate an empty waveform', () => {
+  const { canvas } = stubCanvas();
+  assert.doesNotThrow(() => drawDetail(canvas, { columns: [] }, [], [], 1000, 0, 8000));
+  assert.doesNotThrow(() => drawOverview(canvas, null, [], 1000, 0));
+});
+
+test('binning is stable as the playhead advances', () => {
+  // The anti-flicker property: bins anchored to source columns mean the same
+  // number of bars is drawn frame to frame, rather than re-slicing each time.
+  const counts = [];
+  for (const pos of [5000, 5007, 5013, 5021]) {
+    const { canvas, calls } = stubCanvas();
+    drawDetail(canvas, WAVE, [], [], 50000, pos, 8000);
+    counts.push(calls.fillRect);
+  }
+  const spread = Math.max(...counts) - Math.min(...counts);
+  assert.ok(spread <= 3, `bar count should be near-constant, spread was ${spread}`);
+});

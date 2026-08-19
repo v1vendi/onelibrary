@@ -15,123 +15,9 @@ const HOT_CUE_COLOR = '#00c8ff';
 const MEMORY_CUE_COLOR = '#ff9500';
 const LOOP_FILL = 'rgba(0, 200, 255, 0.18)';
 
-/**
- * Map a PWV5 3-bit RGB triple to a CSS colour.
- *
- * The channels are normalised against the strongest of the three rather than
- * against a fixed floor. A flat floor washes every column toward grey-pink,
- * because all three bands are non-zero nearly everywhere; normalising instead
- * lets a bass-dominant column read as actually blue.
- */
-function columnColor(col) {
-  if (col.r === col.g && col.g === col.b) {
-    const v = 90 + col.r * 22;
-    return `rgb(${v},${v},${v})`;
-  }
-  const peak = Math.max(col.r, col.g, col.b, 1);
-  const norm = (c) => Math.round(55 + (c / peak) * 200);
-  return `rgb(${norm(col.r)},${norm(col.g)},${norm(col.b)})`;
-}
-
-/**
- * @param {HTMLCanvasElement} canvas
- * @param {{columns:Array}} waveform
- * @param {Array} cues
- * @param {Array} beats
- * @param {number} durationMs
- */
-export function drawWaveform(canvas, waveform, cues = [], beats = [], durationMs = 0) {
-  const dpr = window.devicePixelRatio || 1;
-  const cssW = canvas.clientWidth || 800;
-  const cssH = canvas.clientHeight || 160;
-  canvas.width = Math.floor(cssW * dpr);
-  canvas.height = Math.floor(cssH * dpr);
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, cssW, cssH);
-
-  const cols = waveform?.columns || [];
-  if (!cols.length) {
-    ctx.fillStyle = 'rgba(128,128,128,0.6)';
-    ctx.font = '13px ui-sans-serif, system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('no waveform data', cssW / 2, cssH / 2);
-    return;
-  }
-
-  const mid = cssH / 2;
-  const maxAmp = cssH / 2 - 12;
-
-  // Beat grid first, so the waveform sits on top of it.
-  if (beats.length && durationMs) {
-    for (const b of beats) {
-      const x = (b.timeMs / durationMs) * cssW;
-      if (x < 0 || x > cssW) continue;
-      const downbeat = b.beat === 1;
-      ctx.strokeStyle = downbeat ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.07)';
-      ctx.lineWidth = downbeat ? 1 : 0.5;
-      ctx.beginPath();
-      ctx.moveTo(x, mid - maxAmp);
-      ctx.lineTo(x, mid + maxAmp);
-      ctx.stroke();
-    }
-  }
-
-  // Loop regions, behind the waveform.
-  for (const c of cues) {
-    if (!c.loopEndMs || !durationMs) continue;
-    const x1 = (c.timeMs / durationMs) * cssW;
-    const x2 = (c.loopEndMs / durationMs) * cssW;
-    ctx.fillStyle = LOOP_FILL;
-    ctx.fillRect(x1, mid - maxAmp, Math.max(2, x2 - x1), maxAmp * 2);
-  }
-
-  // The envelope: one vertical bar per pixel column, peak-picked.
-  const perPixel = cols.length / cssW;
-  for (let px = 0; px < cssW; px++) {
-    const start = Math.floor(px * perPixel);
-    const end = Math.max(start + 1, Math.floor((px + 1) * perPixel));
-    let peak = 0;
-    let pick = cols[start];
-    for (let i = start; i < end && i < cols.length; i++) {
-      if (cols[i].height > peak) { peak = cols[i].height; pick = cols[i]; }
-    }
-    if (!pick) continue;
-    const h = Math.max(1, peak * maxAmp);
-    ctx.fillStyle = columnColor(pick);
-    ctx.fillRect(px, mid - h, 1, h * 2);
-  }
-
-  // Cue markers on top.
-  for (const c of cues) {
-    if (!durationMs) continue;
-    const x = (c.timeMs / durationMs) * cssW;
-    const color = c.isMemory ? MEMORY_CUE_COLOR : HOT_CUE_COLOR;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, cssH);
-    ctx.stroke();
-
-    const label = c.isMemory ? '◆' : c.hotLetter;
-    ctx.fillStyle = color;
-    ctx.fillRect(x - 8, 0, 16, 14);
-    ctx.fillStyle = '#000';
-    ctx.font = 'bold 10px ui-sans-serif, system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, x, 7);
-  }
-}
-
-/* ---------------------------------------------------------------------------
-   Playback views
-   --------------------------------------------------------------------------- */
-
-/** Set up a canvas for CSS-pixel drawing at device resolution. */
+/** Size a canvas for CSS-pixel drawing at device resolution, and clear it. */
 function prepare(canvas) {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = globalThis.devicePixelRatio || 1;
   const w = canvas.clientWidth || 800;
   const h = canvas.clientHeight || 100;
   canvas.width = Math.floor(w * dpr);
@@ -146,6 +32,81 @@ function cueColor(cue) {
   return cue.isMemory ? MEMORY_CUE_COLOR : HOT_CUE_COLOR;
 }
 
+/* rekordbox's three-band palette: bass blue, mid amber, highs near-white. */
+const BAND_LOW = '#1e5fd0';
+const BAND_MID = '#a9741e';
+const BAND_HIGH = '#f0ede4';
+const MONO = '#9aa4b0';
+
+/**
+ * Bin the source columns into fixed groups, aligned to the *source* index.
+ *
+ * Alignment is what stops the waveform shimmering. Binning by screen position
+ * re-slices the data every frame as the playhead advances, so the peak inside
+ * each bin jumps between neighbouring samples and the whole envelope crawls.
+ * Anchoring the bins to absolute column indices means a given bin always
+ * covers the same samples, and scrolling only changes where it is drawn.
+ */
+function binColumns(cols, from, to, step) {
+  const bins = [];
+  const first = Math.floor(from / step) * step;
+  for (let i = first; i < to; i += step) {
+    let hi = 0, lo = 0, mid = 0, high = 0;
+    const end = Math.min(i + step, cols.length);
+    for (let j = Math.max(0, i); j < end; j++) {
+      const c = cols[j];
+      if (!c) continue;
+      if (c.height > hi) hi = c.height;
+      if (c.b > lo) lo = c.b;
+      if (c.g > mid) mid = c.g;
+      if (c.r > high) high = c.r;
+    }
+    bins.push({ index: i, height: hi, low: lo, mid, high });
+  }
+  return bins;
+}
+
+/**
+ * Perceptual curve applied to column heights before drawing.
+ *
+ * The stored heights are close to linear amplitude, and music spends most of
+ * its time far below peak — across a typical zoomed window the mean height is
+ * about 0.16 against a max near 0.94. Drawn literally that is a thin line with
+ * occasional spikes. Raising it to a fractional power lifts the body without
+ * touching the peaks, which is why DJ software waveforms look full rather than
+ * flat.
+ */
+const DISPLAY_GAMMA = 0.6;
+const shape = (height) => Math.pow(Math.max(0, height), DISPLAY_GAMMA);
+
+/**
+ * Draw one column as three stacked bands.
+ *
+ * Bands are painted widest first so the narrower ones stay visible on top,
+ * which is how the low/mid/high split reads as a single shape rather than
+ * three competing ones.
+ */
+function drawBands(ctx, x, width, mid, amp, bin, colour) {
+  if (colour) {
+    const peak = Math.max(bin.low, bin.mid, bin.high, 1);
+    const h = Math.max(1, shape(bin.height) * amp);
+    const bands = [
+      [BAND_LOW, (bin.low / peak) * h],
+      [BAND_MID, (bin.mid / peak) * h],
+      [BAND_HIGH, (bin.high / peak) * h],
+    ].sort((a, b) => b[1] - a[1]);
+    for (const [fill, height] of bands) {
+      ctx.fillStyle = fill;
+      const hh = Math.max(1, height);
+      ctx.fillRect(x, mid - hh, width, hh * 2);
+    }
+  } else {
+    const h = Math.max(1, shape(bin.height) * amp);
+    ctx.fillStyle = MONO;
+    ctx.fillRect(x, mid - h, width, h * 2);
+  }
+}
+
 /**
  * The whole track at a glance, with a playhead.
  *
@@ -157,7 +118,8 @@ export function drawOverview(canvas, waveform, cues, durationMs, positionMs) {
   const cols = waveform?.columns || [];
   if (!cols.length) return;
   const mid = h / 2;
-  const amp = h / 2 - 4;
+  const amp = h / 2 - 3;
+  const colour = waveform.source === 'PWV5';
 
   for (const c of cues) {
     if (!c.loopEndMs || !durationMs) continue;
@@ -167,34 +129,27 @@ export function drawOverview(canvas, waveform, cues, durationMs, positionMs) {
     ctx.fillRect(x1, 0, Math.max(2, x2 - x1), h);
   }
 
-  const per = cols.length / w;
-  for (let px = 0; px < w; px++) {
-    const a = Math.floor(px * per);
-    const b = Math.max(a + 1, Math.floor((px + 1) * per));
-    let peak = 0, pick = cols[a];
-    for (let i = a; i < b && i < cols.length; i++) {
-      if (cols[i].height > peak) { peak = cols[i].height; pick = cols[i]; }
-    }
-    if (!pick) continue;
-    const played = durationMs && (px / w) * durationMs < positionMs;
-    ctx.fillStyle = columnColor(pick);
-    ctx.globalAlpha = played ? 1 : 0.4;
-    const y = Math.max(1, peak * amp);
-    ctx.fillRect(px, mid - y, 1, y * 2);
+  const step = Math.max(1, Math.round(cols.length / w));
+  for (const bin of binColumns(cols, 0, cols.length, step)) {
+    const x = (bin.index / cols.length) * w;
+    drawBands(ctx, x, Math.max(1, w / (cols.length / step)), mid, amp, bin, colour);
   }
-  ctx.globalAlpha = 1;
+
+  // Dim what has not played yet, so progress reads at a glance.
+  if (durationMs) {
+    const played = (positionMs / durationMs) * w;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(played, 0, w - played, h);
+  }
 
   for (const c of cues) {
     if (!durationMs) continue;
-    const x = (c.timeMs / durationMs) * w;
     ctx.fillStyle = cueColor(c);
-    ctx.fillRect(x - 1, 0, 2, h);
+    ctx.fillRect((c.timeMs / durationMs) * w - 1, 0, 2, h);
   }
-
   if (durationMs) {
-    const x = (positionMs / durationMs) * w;
     ctx.fillStyle = '#fff';
-    ctx.fillRect(x - 1, 0, 2, h);
+    ctx.fillRect((positionMs / durationMs) * w - 1, 0, 2, h);
   }
 }
 
@@ -214,18 +169,26 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
   if (!cols.length || !durationMs) return;
 
   const mid = h / 2;
-  const amp = h / 2 - 6;
+  const amp = h / 2 - 8;
+  const colour = waveform.source === 'PWV5';
   const startMs = positionMs - windowMs / 2;
   const msToX = (ms) => ((ms - startMs) / windowMs) * w;
-  const colsPerMs = cols.length / durationMs;
 
-  // Beat grid behind everything.
+  const colsPerMs = cols.length / durationMs;
+  const pxPerCol = w / (windowMs * colsPerMs);
+  // One bin per screen pixel at most; never finer than one source column.
+  const step = Math.max(1, Math.ceil(1 / pxPerCol));
+  const barW = Math.max(1, pxPerCol * step);
+
+  const fromCol = Math.floor(startMs * colsPerMs) - step;
+  const toCol = Math.ceil((startMs + windowMs) * colsPerMs) + step;
+
   for (const b of beats) {
     if (b.timeMs < startMs - 50 || b.timeMs > startMs + windowMs + 50) continue;
     const x = msToX(b.timeMs);
     const downbeat = b.beat === 1;
-    ctx.fillStyle = downbeat ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.13)';
-    ctx.fillRect(x, downbeat ? 0 : h * 0.18, downbeat ? 1.5 : 1, downbeat ? h : h * 0.64);
+    ctx.fillStyle = downbeat ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.16)';
+    ctx.fillRect(x, downbeat ? 0 : h * 0.2, downbeat ? 1.5 : 1, downbeat ? h : h * 0.6);
   }
 
   for (const c of cues) {
@@ -236,20 +199,13 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
     ctx.fillRect(x1, 0, x2 - x1, h);
   }
 
-  // One bar per pixel column, peak-picked within that pixel's time slice.
-  for (let px = 0; px < w; px++) {
-    const ms = startMs + (px / w) * windowMs;
-    if (ms < 0 || ms > durationMs) continue;
-    const a = Math.floor(ms * colsPerMs);
-    const b = Math.max(a + 1, Math.floor((startMs + ((px + 1) / w) * windowMs) * colsPerMs));
-    let peak = 0, pick = cols[a];
-    for (let i = a; i < b && i < cols.length; i++) {
-      if (cols[i]?.height > peak) { peak = cols[i].height; pick = cols[i]; }
-    }
-    if (!pick) continue;
-    ctx.fillStyle = columnColor(pick);
-    const y = Math.max(1, peak * amp);
-    ctx.fillRect(px, mid - y, 1, y * 2);
+  // Bins are anchored to source columns, so the shape stays fixed and only its
+  // screen position moves -- the waveform glides instead of boiling.
+  for (const bin of binColumns(cols, fromCol, Math.min(toCol, cols.length), step)) {
+    if (bin.index < 0) continue;
+    const x = (bin.index / colsPerMs - startMs) / windowMs * w;
+    if (x < -barW || x > w) continue;
+    drawBands(ctx, x, barW, mid, amp, bin, colour);
   }
 
   for (const c of cues) {
@@ -258,16 +214,14 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
     const color = cueColor(c);
     ctx.fillStyle = color;
     ctx.fillRect(x - 1, 0, 2, h);
-    const label = c.isMemory ? '◆' : c.hotLetter;
     ctx.fillRect(x - 9, 0, 18, 15);
     ctx.fillStyle = '#000';
     ctx.font = 'bold 11px ui-sans-serif, system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, x, 8);
+    ctx.fillText(c.isMemory ? '◆' : c.hotLetter, x, 8);
   }
 
-  // Fixed centre playhead.
   ctx.fillStyle = '#ff3b30';
   ctx.fillRect(w / 2 - 1, 0, 2, h);
 }

@@ -9,7 +9,8 @@ import { decrypt, DecryptError, DEFAULT_KEY } from './sqlcipher.js';
 import { SQLiteDatabase } from './sqlite.js';
 import { parseAnlz } from './anlz.js';
 import { drawOverview, drawDetail, TRACK_COLORS } from './waveform.js';
-import { Player, fmtPosition } from './player.js';
+import { fmtPosition } from './player.js';
+import { Deck, PITCH_RANGES } from './deck.js';
 import { Editor, EDITABLE, saveEdits } from './editor.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -30,9 +31,13 @@ const state = {
   zoomMs: 8000,
 };
 
-const player = new Player();
+const decks = { A: new Deck('A'), B: new Deck('B') };
 const editor = new Editor();
 let rafHandle = null;
+/** The deck a bare space/arrow keypress drives. */
+let focusedDeck = 'A';
+/** 1 or 2 decks. Two is the mixing layout; one is just a player. */
+let deckCount = 1;
 
 // -- loading ---------------------------------------------------------------
 
@@ -223,7 +228,7 @@ function renderList() {
   const thead = el('thead');
   const hr = el('tr');
   for (const [h, cls] of [['', null], ['Title', null], ['Artist', 'artist'],
-                          ['BPM', 'r'], ['Key', null], ['Time', 'r'], ['Rating', null]]) {
+                          ['BPM', 'r bpm'], ['Key', 'key'], ['Time', 'r'], ['Rating', null]]) {
     hr.append(el('th', cls, h));
   }
   thead.append(hr);
@@ -249,10 +254,15 @@ function renderList() {
     tr.append(swatch);
     tr.append(el('td', 'title', title || ''));
     tr.append(el('td', 'artist', f.artist));
-    tr.append(el('td', 'num', t.bpmx100 ? (t.bpmx100 / 100).toFixed(2) : ''));
-    tr.append(el('td', null, f.key));
+    tr.append(el('td', 'num bpm', t.bpmx100 ? (t.bpmx100 / 100).toFixed(2) : ''));
+    tr.append(el('td', 'key', f.key));
     tr.append(el('td', 'num', fmtTime(t.length)));
     tr.append(el('td', 'stars', '★'.repeat(rating || 0)));
+    tr.draggable = true;
+    tr.ondragstart = (e) => {
+      e.dataTransfer.setData('application/x-onelibrary-track', String(t.content_id));
+      e.dataTransfer.effectAllowed = 'copy';
+    };
     tr.onclick = () => selectTrack(t);
     tbody.append(tr);
   }
@@ -278,30 +288,296 @@ async function anlzFor(track) {
   }
 }
 
-/** Locate the audio file for a track in the dropped device tree. */
-function audioFileFor(track) {
-  if (!track.path) return null;
-  const rel = track.path.replace(/^\//, '').toLowerCase();
-  return (
-    state.files.get(rel) ||
-    [...state.files].find(([k]) => k.endsWith(rel))?.[1] ||
-    null
-  );
+/** Locate a device file by its stored path, which is device-relative. */
+function deviceFile(storedPath) {
+  if (!storedPath) return null;
+  const rel = storedPath.replace(/^\//, '').toLowerCase();
+  return state.files.get(rel) || [...state.files].find(([k]) => k.endsWith(rel))?.[1] || null;
 }
 
-function transportButton(label, title, onClick) {
-  const b = el('button', 'tbtn', label);
-  b.title = title;
-  b.setAttribute('aria-label', title);
+async function artworkUrlFor(track) {
+  if (!track.image_id) return null;
+  const row = state.db.select('image').find((i) => i.image_id === track.image_id);
+  const file = deviceFile(row?.path);
+  return file ? URL.createObjectURL(file) : null;
+}
+
+function button(cls, label, title, onClick) {
+  const b = el('button', cls, label);
+  if (title) { b.title = title; b.setAttribute('aria-label', title); }
   b.onclick = onClick;
   return b;
+}
+
+/** Load the selected track onto a deck. */
+async function loadDeck(id, track) {
+  if (!track) return;
+  const deck = decks[id];
+  const anlz = await anlzFor(track);
+  const hasAudio = deck.load({
+    track,
+    anlz,
+    audioFile: deviceFile(track.path),
+    artworkUrl: await artworkUrlFor(track),
+  });
+  focusedDeck = id;
+  renderDecks();
+  if (!hasAudio) {
+    status(`Deck ${id}: no audio for this track on the device — waveform and cues only.`);
+  }
+}
+
+function renderDecks() {
+  const wrap = $('#decks');
+  wrap.replaceChildren();
+  const ids = deckCount === 2 ? ['A', 'B'] : ['A'];
+  wrap.dataset.count = String(deckCount);
+  if (deckCount === 1 && focusedDeck !== 'A') focusedDeck = 'A';
+
+  // With two decks the scrolling lanes run the full width and stack, as on a
+  // CDJ pair: both playheads sit on the same vertical line, which is what makes
+  // phase differences between the two tracks visible at a glance.
+  const lanes = deckCount === 2 ? el('div', 'lanes') : null;
+  if (lanes) wrap.append(lanes);
+
+  const row = el('div', 'deck-row');
+  for (const id of ids) row.append(renderDeck(decks[id], lanes));
+  wrap.append(row);
+  startDeckAnimation();
+}
+
+/**
+ * Switch between the single player and the two-deck mixing layout.
+ *
+ * Dropping to one deck stops and unloads the second rather than leaving it
+ * playing out of sight.
+ */
+function setDeckCount(n) {
+  deckCount = n;
+  if (n === 1) decks.B.unload();
+  try { localStorage.setItem('onelibrary.decks', String(n)); } catch { /* private mode */ }
+  const btn = $('#decktoggle');
+  if (btn) btn.textContent = n === 2 ? 'Single deck' : 'Two decks';
+  renderDecks();
+}
+
+function renderDeck(deck, lanes = null) {
+  const other = decks[deck.id === 'A' ? 'B' : 'A'];
+  const panel = el('section', 'deck' + (focusedDeck === deck.id ? ' focused' : ''));
+  panel.dataset.deck = deck.id;
+  panel.onpointerdown = () => { focusedDeck = deck.id; markFocus(); };
+
+  // Dropping a row from the list loads it onto this deck.
+  panel.ondragover = (e) => {
+    if (!e.dataTransfer.types.includes('application/x-onelibrary-track')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    panel.classList.add('drop');
+  };
+  panel.ondragleave = () => panel.classList.remove('drop');
+  panel.ondrop = (e) => {
+    panel.classList.remove('drop');
+    const id = Number(e.dataTransfer.getData('application/x-onelibrary-track'));
+    const track = state.tracks.find((t) => t.content_id === id);
+    if (!track) return;
+    e.preventDefault();
+    e.stopPropagation();   // the page-level handler loads devices, not tracks
+    loadDeck(deck.id, track);
+  };
+
+  // -- header: artwork, identity, tempo, clocks --------------------------
+  const head = el('div', 'deck-head');
+  const art = el('div', 'art');
+  if (deck.artworkUrl) {
+    const img = el('img');
+    img.src = deck.artworkUrl;
+    img.alt = '';
+    art.append(img);
+  } else {
+    art.append(el('span', 'art-empty', deck.id));
+  }
+  head.append(art);
+
+  const ident = el('div', 'ident');
+  const f = deck.track ? trackFields(deck.track) : {};
+  ident.append(el('div', 'deck-title', deck.track?.title || 'No track loaded'));
+  ident.append(el('div', 'deck-artist', f.artist || ''));
+  head.append(ident);
+
+  const clocks = el('div', 'clocks');
+  const elapsed = el('div', 'clock mono', fmtPosition(deck.player.positionMs));
+  const remain = el('div', 'remain mono', '-' + fmtPosition(deck.remainingMs));
+  clocks.append(elapsed, remain);
+  head.append(clocks);
+  panel.append(head);
+
+  // -- waveforms ---------------------------------------------------------
+  const detail = el('canvas', 'wave detail');
+  const overview = el('canvas', 'wave overview');
+  if (lanes) {
+    const lane = el('div', 'lane');
+    lane.append(el('span', 'lane-tag', deck.id));
+    lane.append(detail);
+    lanes.append(lane);
+    panel.append(overview);
+  } else {
+    panel.append(detail, overview);
+  }
+
+  // -- transport ---------------------------------------------------------
+  const bar = el('div', 'deck-bar');
+
+  const loadBtn = button('dbtn load', 'LOAD', `Load the selected track onto deck ${deck.id}`,
+    () => loadDeck(deck.id, state.selected));
+  bar.append(loadBtn);
+
+  const cueBtn = button('dbtn cue', 'CUE', 'Return to the cue point; press again there to move it',
+    () => deck.cue());
+  const playBtn = button('dbtn play', deck.player.playing ? '❚❚' : '▶',
+    'Play or pause', () => deck.player.toggle());
+  bar.append(cueBtn, playBtn);
+
+  // Tempo: readout, fader, range, sync.
+  const tempo = el('div', 'tempo');
+  const bpmRead = el('div', 'bpm-read mono',
+    deck.bpm === null ? '--.--' : deck.bpm.toFixed(2));
+  const pitchRead = el('div', 'pitch-read mono',
+    `${deck.pitch >= 0 ? '+' : ''}${deck.pitch.toFixed(1)}%`);
+  tempo.append(bpmRead, pitchRead);
+
+  const fader = el('input', 'fader');
+  fader.type = 'range';
+  fader.min = String(-deck.range);
+  fader.max = String(deck.range);
+  fader.step = '0.02';
+  fader.value = String(deck.pitch);
+  fader.title = 'Pitch';
+  fader.oninput = () => deck.setPitch(Number(fader.value));
+  fader.ondblclick = () => { deck.resetPitch(); renderDecks(); };
+  tempo.append(fader);
+
+  const ranges = el('div', 'ranges');
+  for (const r of PITCH_RANGES) {
+    const b = el('button', 'rbtn' + (deck.range === r ? ' on' : ''), `±${r}`);
+    b.onclick = () => { deck.setRange(r); renderDecks(); };
+    ranges.append(b);
+  }
+  tempo.append(ranges);
+  bar.append(tempo);
+
+  const sync = button('dbtn sync', 'BEAT SYNC', `Match deck ${other.id}'s tempo`, () => {
+    const problem = deck.syncTo(other);
+    if (problem) status(`Deck ${deck.id} cannot sync: ${problem}`, 'error');
+    else { status(''); renderDecks(); }
+  });
+  if (!deck.loaded || !other.loaded || deckCount === 1) sync.disabled = true;
+  if (deckCount === 2) bar.append(sync);
+  panel.append(bar);
+
+  // -- hot cues ----------------------------------------------------------
+  const pads = el('div', 'pads');
+  for (const letter of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
+    const cue = deck.hotCues.find((c) => c.hotLetter === letter);
+    const pad = el('button', 'pad' + (cue ? ' set' : ''), letter);
+    pad.title = cue ? `Jump to hot cue ${letter}` : `No hot cue ${letter}`;
+    pad.disabled = !cue;
+    pad.onclick = () => deck.jumpToHotCue(letter);
+    pads.append(pad);
+  }
+  panel.append(pads);
+
+  // -- redraw wiring -----------------------------------------------------
+  const redraw = () => {
+    drawDetail(detail, deck.anlz?.waveform, deck.cues, deck.anlz?.beats ?? [],
+               deck.durationMs, deck.player.positionMs, state.zoomMs);
+    drawOverview(overview, deck.anlz?.waveform, deck.cues,
+                 deck.durationMs, deck.player.positionMs);
+    elapsed.textContent = fmtPosition(deck.player.positionMs);
+    remain.textContent = '-' + fmtPosition(deck.remainingMs);
+    playBtn.textContent = deck.player.playing ? '❚❚' : '▶';
+    // Driven from deck state, not from the fader's own input event, so BEAT
+    // SYNC and any other programmatic tempo change show up in the readout too.
+    bpmRead.textContent = deck.bpm === null ? '--.--' : deck.bpm.toFixed(2);
+    pitchRead.textContent = `${deck.pitch >= 0 ? '+' : ''}${deck.pitch.toFixed(1)}%`;
+    if (document.activeElement !== fader) fader.value = String(deck.pitch);
+  };
+  deck._redraw = redraw;
+
+  // The animation loop only runs while a deck is playing, so anything that
+  // moves the playhead while paused — CUE, a hot cue, sync, a keyboard jump —
+  // needs its own refresh. Listeners are cleared first because renderDeck runs
+  // again on every re-render and would otherwise stack one per pass.
+  deck.listeners.clear();
+  deck.onChange(redraw);
+
+  const seek = (ev) => {
+    const r = overview.getBoundingClientRect();
+    deck.player.seekMs(((ev.clientX - r.left) / r.width) * deck.durationMs);
+    redraw();
+  };
+  overview.onpointerdown = (ev) => {
+    overview.setPointerCapture(ev.pointerId);
+    seek(ev);
+    overview.onpointermove = (m) => m.buttons && seek(m);
+  };
+  overview.onpointerup = () => { overview.onpointermove = null; };
+  detail.onpointerdown = (ev) => {
+    detail.setPointerCapture(ev.pointerId);
+    let lastX = ev.clientX;
+    detail.onpointermove = (m) => {
+      if (!m.buttons) return;
+      deck.player.seekMs(deck.player.positionMs -
+        ((m.clientX - lastX) / detail.clientWidth) * state.zoomMs);
+      lastX = m.clientX;
+      redraw();
+    };
+  };
+  detail.onpointerup = () => { detail.onpointermove = null; };
+
+  requestAnimationFrame(redraw);
+  return panel;
+}
+
+function markFocus() {
+  for (const p of document.querySelectorAll('.deck')) {
+    p.classList.toggle('focused', p.dataset.deck === focusedDeck);
+  }
+}
+
+/** One animation loop for both decks, rather than one each. */
+function startDeckAnimation() {
+  if (rafHandle) cancelAnimationFrame(rafHandle);
+  const tick = () => {
+    for (const deck of Object.values(decks)) {
+      if (deck.player.playing) deck._redraw?.();
+    }
+    rafHandle = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+async function anlzFor(track) {
+  const p = track.analysisDataFilePath;
+  if (!p) return null;
+  const rel = p.replace(/^\//, '').toLowerCase();
+  const dat = deviceFile(p);
+  const extKey = rel.replace(/\.dat$/, '.ext');
+  const ext = state.files.get(extKey) || [...state.files].find(([k]) => k.endsWith(extKey))?.[1];
+  if (!dat && !ext) return null;
+  try {
+    return parseAnlz(
+      dat ? new Uint8Array(await dat.arrayBuffer()) : null,
+      ext ? new Uint8Array(await ext.arrayBuffer()) : null
+    );
+  } catch {
+    return null;
+  }
 }
 
 /** The editable metadata form for one track. */
 function buildEditor(track, fields) {
   const wrap = el('div', 'editor');
   const id = track.content_id;
-
   const originalOf = (spec) =>
     spec.kind === 'lookup' ? fields[spec.field] || '' : track[spec.field] ?? null;
 
@@ -310,22 +586,22 @@ function buildEditor(track, fields) {
     const current = editor.get(id, spec.field, original);
     const row = el('div', 'field' + (editor.has(id, spec.field) ? ' changed' : ''));
     row.append(el('label', 'label', spec.label));
+    const touched = () => {
+      row.classList.toggle('changed', editor.has(id, spec.field));
+      renderList();
+      renderSaveBar();
+    };
 
     if (spec.kind === 'rating') {
       const stars = el('div', 'stars-edit');
-      const paint = (value) => {
-        [...stars.children].forEach((s, i) => s.classList.toggle('on', i < value));
-      };
+      const paint = (v) => [...stars.children].forEach((s, i) => s.classList.toggle('on', i < v));
       for (let i = 1; i <= 5; i++) {
         const star = el('button', 'star', '★');
         star.title = `${i} star${i === 1 ? '' : 's'}`;
         star.onclick = () => {
           const next = editor.get(id, 'rating', original) === i ? 0 : i;
           editor.set(id, 'rating', next, original);
-          paint(next);
-          row.classList.toggle('changed', editor.has(id, 'rating'));
-          renderList();
-          renderSaveBar();
+          paint(next); touched();
         };
         stars.append(star);
       }
@@ -333,11 +609,8 @@ function buildEditor(track, fields) {
       row.append(stars);
     } else if (spec.kind === 'color') {
       const swatches = el('div', 'swatches');
-      const paint = (value) => {
-        [...swatches.children].forEach((s) =>
-          s.classList.toggle('on', Number(s.dataset.id) === Number(value))
-        );
-      };
+      const paint = (v) => [...swatches.children].forEach((s) =>
+        s.classList.toggle('on', Number(s.dataset.id) === Number(v)));
       for (const c of state.db.select('color')) {
         const b = el('button', 'swatch-btn');
         b.dataset.id = c.color_id;
@@ -346,22 +619,13 @@ function buildEditor(track, fields) {
         b.onclick = () => {
           const next = Number(editor.get(id, 'color_id', original)) === c.color_id ? null : c.color_id;
           editor.set(id, 'color_id', next, original);
-          paint(next);
-          row.classList.toggle('changed', editor.has(id, 'color_id'));
-          renderList();
-          renderSaveBar();
+          paint(next); touched();
         };
         swatches.append(b);
       }
       const none = el('button', 'swatch-btn none', '×');
       none.title = 'No colour';
-      none.onclick = () => {
-        editor.set(id, 'color_id', null, original);
-        paint(null);
-        row.classList.toggle('changed', editor.has(id, 'color_id'));
-        renderList();
-        renderSaveBar();
-      };
+      none.onclick = () => { editor.set(id, 'color_id', null, original); paint(null); touched(); };
       swatches.append(none);
       paint(current);
       row.append(swatches);
@@ -370,12 +634,7 @@ function buildEditor(track, fields) {
       input.type = 'text';
       input.value = current ?? '';
       input.placeholder = '—';
-      input.oninput = () => {
-        editor.set(id, spec.field, input.value, original);
-        row.classList.toggle('changed', editor.has(id, spec.field));
-        renderList();
-        renderSaveBar();
-      };
+      input.oninput = () => { editor.set(id, spec.field, input.value, original); touched(); };
       row.append(input);
     }
     wrap.append(row);
@@ -393,6 +652,14 @@ async function selectTrack(t) {
   const f = trackFields(t);
   detail.append(el('h2', null, t.title || '(untitled)'));
 
+  const load = el('div', 'load-row');
+  load.append(el('span', 'label', deckCount === 2 ? 'Load to' : 'Load'));
+  for (const id of deckCount === 2 ? ['A', 'B'] : ['A']) {
+    load.append(button('dbtn', deckCount === 2 ? `DECK ${id}` : 'PLAY DECK',
+                       `Load onto deck ${id}`, () => loadDeck(id, t)));
+  }
+  detail.append(load);
+
   detail.append(buildEditor(t, f));
 
   const readonly = el('div', 'meta');
@@ -408,124 +675,7 @@ async function selectTrack(t) {
     readonly.append(item);
   }
   detail.append(readonly);
-
-  const overview = el('canvas', 'wave overview');
-  const detailCanvas = el('canvas', 'wave detail');
-  detail.append(detailCanvas);
-  detail.append(overview);
-
-  const transport = el('div', 'transport');
-  detail.append(transport);
-  const legend = el('div', 'legend');
-  detail.append(legend);
   if (t.path) detail.append(el('div', 'path', t.path));
-
-  const anlz = await anlzFor(t);
-  state.anlz = anlz;
-  const durationFallback = (t.length || 0) * 1000;
-
-  if (!anlz) {
-    legend.textContent = 'No analysis file loaded for this track.';
-    return;
-  }
-
-  const audio = audioFileFor(t);
-  const hasAudio = player.load(audio, anlz.cues);
-
-  const duration = () => player.durationMs || durationFallback;
-  const redraw = () => {
-    const pos = player.positionMs;
-    drawDetail(detailCanvas, anlz.waveform, anlz.cues, anlz.beats, duration(), pos, state.zoomMs);
-    drawOverview(overview, anlz.waveform, anlz.cues, duration(), pos);
-  };
-
-  // --- transport ---------------------------------------------------------
-  const playBtn = transportButton('▶', 'Play or pause (space)', () => player.toggle());
-  transport.append(transportButton('⏮', 'Previous cue (left arrow)', () => player.jumpCue(-1)));
-  transport.append(playBtn);
-  transport.append(transportButton('⏭', 'Next cue (right arrow)', () => player.jumpCue(1)));
-
-  const clock = el('span', 'clock mono', '0:00.0');
-  transport.append(clock);
-  transport.append(el('span', 'clock-total mono', `/ ${fmtTime(t.length)}`));
-
-  const zoom = el('div', 'zoom');
-  zoom.append(el('span', 'label', 'Zoom'));
-  for (const [ms, name] of [[4000, '4s'], [8000, '8s'], [16000, '16s'], [32000, '32s']]) {
-    const b = el('button', 'zbtn' + (state.zoomMs === ms ? ' on' : ''), name);
-    b.onclick = () => {
-      state.zoomMs = ms;
-      for (const other of zoom.querySelectorAll('.zbtn')) other.classList.remove('on');
-      b.classList.add('on');
-      redraw();
-    };
-    zoom.append(b);
-  }
-  transport.append(zoom);
-
-  if (!hasAudio) {
-    transport.append(
-      el('span', 'nowav', 'no audio on this device — waveform and cues only')
-    );
-    for (const b of transport.querySelectorAll('.tbtn')) b.disabled = true;
-  }
-
-  // --- interaction -------------------------------------------------------
-  const seekFromOverview = (ev) => {
-    const r = overview.getBoundingClientRect();
-    player.seekMs(((ev.clientX - r.left) / r.width) * duration());
-    redraw();
-  };
-  overview.onpointerdown = (ev) => {
-    overview.setPointerCapture(ev.pointerId);
-    seekFromOverview(ev);
-    overview.onpointermove = (m) => m.buttons && seekFromOverview(m);
-  };
-  overview.onpointerup = () => { overview.onpointermove = null; };
-
-  // Dragging the detail view scrubs, at the zoom level currently shown.
-  detailCanvas.onpointerdown = (ev) => {
-    detailCanvas.setPointerCapture(ev.pointerId);
-    let lastX = ev.clientX;
-    detailCanvas.onpointermove = (m) => {
-      if (!m.buttons) return;
-      const dx = m.clientX - lastX;
-      lastX = m.clientX;
-      player.seekMs(player.positionMs - (dx / detailCanvas.clientWidth) * state.zoomMs);
-      redraw();
-    };
-  };
-  detailCanvas.onpointerup = () => { detailCanvas.onpointermove = null; };
-
-  player.onChange(() => {
-    playBtn.textContent = player.playing ? '⏸' : '▶';
-    clock.textContent = fmtPosition(player.positionMs);
-    redraw();
-  });
-
-  if (rafHandle) cancelAnimationFrame(rafHandle);
-  const tick = () => {
-    if (player.playing) {
-      clock.textContent = fmtPosition(player.positionMs);
-      redraw();
-    }
-    rafHandle = requestAnimationFrame(tick);
-  };
-  tick();
-
-  // --- legend ------------------------------------------------------------
-  const hot = anlz.cues.filter((c) => !c.isMemory);
-  const mem = anlz.cues.filter((c) => c.isMemory);
-  const loops = anlz.cues.filter((c) => c.loopEndMs);
-  legend.replaceChildren();
-  legend.append(el('span', 'chip hot', `${hot.length} hot cue${hot.length === 1 ? '' : 's'}`));
-  legend.append(el('span', 'chip mem', `${mem.length} memory cue${mem.length === 1 ? '' : 's'}`));
-  if (loops.length) legend.append(el('span', 'chip loop', `${loops.length} loop${loops.length === 1 ? '' : 's'}`));
-  legend.append(el('span', 'chip', `${anlz.beats.length} beats`));
-  legend.append(el('span', 'chip', anlz.waveform.source || 'no waveform'));
-
-  redraw();
-  window.onresize = redraw;
 }
 
 /** The save bar, shown only once there is something to save. */
@@ -579,6 +729,7 @@ function render() {
   $('#main').hidden = false;
   renderSidebar();
   renderList();
+  renderDecks();
   renderSaveBar();
 }
 
@@ -605,16 +756,52 @@ function initSkin() {
   btn.onclick = () => apply(document.documentElement.dataset.skin === 'classic' ? 'modern' : 'classic');
 }
 
+function initDeckCount() {
+  let saved = 1;
+  try { saved = Number(localStorage.getItem('onelibrary.decks')) || 1; } catch { /* ignore */ }
+  const btn = $('#decktoggle');
+  btn.onclick = () => setDeckCount(deckCount === 2 ? 1 : 2);
+  deckCount = saved === 2 ? 2 : 1;
+  btn.textContent = deckCount === 2 ? 'Single deck' : 'Two decks';
+}
+
+function initSidebar() {
+  const btn = $('#sidetoggle');
+  const apply = (collapsed) => {
+    $('#main').dataset.sidebar = collapsed ? 'collapsed' : 'open';
+    btn.textContent = collapsed ? '▸' : '◂';
+    btn.title = collapsed ? 'Show playlists' : 'Hide playlists';
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    try { localStorage.setItem('onelibrary.sidebar', collapsed ? '1' : '0'); } catch { /* ignore */ }
+  };
+  let collapsed = false;
+  try { collapsed = localStorage.getItem('onelibrary.sidebar') === '1'; } catch { /* ignore */ }
+  apply(collapsed);
+  btn.onclick = () => apply($('#main').dataset.sidebar !== 'collapsed');
+}
+
 export function init() {
   initSkin();
+  initDeckCount();
+  initSidebar();
   const zone = $('#dropzone');
+  // A track being dragged to a deck must not look like a device being dropped
+  // on the page, so those drags are left alone here.
+  const isTrackDrag = (e) =>
+    e.dataTransfer?.types.includes('application/x-onelibrary-track');
+
   for (const ev of ['dragenter', 'dragover']) {
-    document.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add('over'); });
+    document.addEventListener(ev, (e) => {
+      if (isTrackDrag(e)) return;
+      e.preventDefault();
+      zone.classList.add('over');
+    });
   }
   for (const ev of ['dragleave', 'drop']) {
     document.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.remove('over'); });
   }
   document.addEventListener('drop', async (e) => {
+    if (isTrackDrag(e)) return;
     status('Reading files…');
     await load(await collectFromDrop(e.dataTransfer));
   });
@@ -630,12 +817,16 @@ export function init() {
   // a title does not scrub the deck.
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input, textarea')) return;
-    if (e.key === ' ') { e.preventDefault(); player.toggle(); }
-    else if (e.key === 'ArrowLeft') { e.preventDefault(); player.jumpCue(-1); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); player.jumpCue(1); }
+    const deck = decks[focusedDeck];
+    if (e.key === ' ') { e.preventDefault(); deck.player.toggle(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); deck.player.jumpCue(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); deck.player.jumpCue(1); }
+    else if (e.key.toLowerCase() === 'q') { focusedDeck = 'A'; markFocus(); }
+    else if (e.key.toLowerCase() === 'w') { focusedDeck = 'B'; markFocus(); }
+    else if (e.key === 'Escape') { deck.cue(); }
   });
 
   // Public API: drive the viewer without a drag-and-drop gesture. `files` maps
   // lowercase device-relative paths to File or Blob objects.
-  window.OneLibraryViewer = { load, selectTrack, state, player, editor };
+  window.OneLibraryViewer = { load, selectTrack, loadDeck, state, decks, editor };
 }

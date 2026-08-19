@@ -65,6 +65,45 @@
   --screen-line: #171d24;
 }
 
+/* ---------------------------------------------------------------------------
+   Type scale
+   ---------------------------------------------------------------------------
+   Sizes are roles, not numbers, so both skins and every breakpoint move as one
+   system. The scale grows on small screens rather than shrinking: a phone is
+   held closer but has far less room, and the dense 9-10px equipment labelling
+   that reads fine on a desktop panel becomes unreadable there. Below 700px the
+   floor rises to 12px and the body text to 15px.
+   --------------------------------------------------------------------------- */
+:root {
+  --fs-micro: 10px;
+  --fs-small: 12px;
+  --fs-body:  13px;
+  --fs-lead:  15px;
+  --fs-title: 18px;
+  --fs-clock: 21px;
+}
+:root[data-skin="classic"] {
+  --fs-micro: 10px;
+  --fs-small: 11px;
+  --fs-body:  12px;
+  --fs-lead:  13px;
+  --fs-title: 15px;
+  --fs-clock: 24px;
+}
+@media (max-width: 700px) {
+  :root,
+  :root[data-skin="classic"] {
+    --fs-micro: 12px;
+    --fs-small: 13px;
+    --fs-body:  15px;
+    --fs-lead:  16px;
+    --fs-title: 20px;
+    --fs-clock: 28px;
+  }
+  /* Wide tracking costs real width once the type grows. */
+  .label, th { letter-spacing: .06em; }
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -77,7 +116,7 @@ body {
 
 /* Equipment-panel labelling: small, wide-tracked, uppercase. */
 .label {
-  font-size: 10px;
+  font-size: var(--fs-micro);
   font-weight: 600;
   letter-spacing: .13em;
   text-transform: uppercase;
@@ -97,13 +136,13 @@ header {
   border-bottom: 1px solid var(--line);
 }
 header h1 {
-  margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -0.005em;
+  margin: 0; font-size: var(--fs-body); font-weight: 650; letter-spacing: -0.005em;
 }
 header h1 b { color: var(--accent); font-weight: 650; }
 .spacer { flex: 1; }
 
 #status {
-  padding: 9px 18px; font-size: 13px;
+  padding: 9px 18px; font-size: var(--fs-body);
   background: var(--sunken); border-bottom: 1px solid var(--line);
 }
 #status[data-kind=ok]    { color: var(--ok); }
@@ -117,9 +156,9 @@ header h1 b { color: var(--accent); font-weight: 650; }
   background: color-mix(in srgb, var(--accent) 12%, var(--panel));
   border-bottom: 1px solid var(--accent);
 }
-#savebar .count { font-size: 13px; font-weight: 550; }
+#savebar .count { font-size: var(--fs-body); font-weight: 550; }
 #savebar button {
-  font: inherit; font-size: 13px; padding: 7px 14px; cursor: pointer;
+  font: inherit; font-size: var(--fs-body); padding: 7px 14px; cursor: pointer;
   border-radius: 7px; border: 1px solid var(--line);
 }
 #savebar .save {
@@ -130,6 +169,131 @@ header h1 b { color: var(--accent); font-weight: 650; }
 #savebar .revert { background: var(--panel); color: var(--ink); }
 #savebar button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
+
+/* --- decks ---------------------------------------------------------------- */
+
+#decks { margin-bottom: 18px; display: flex; flex-direction: column; gap: 10px; }
+
+/* Two decks: the scrolling lanes span the full width and stack, so both
+   playheads sit on one vertical line and phase differences are visible. */
+.lanes { display: flex; flex-direction: column; gap: 2px; }
+.lane { position: relative; }
+.lane-tag {
+  position: absolute; top: 4px; left: 6px; z-index: 1;
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+  color: #fff; background: rgba(0,0,0,.6); padding: 1px 6px; border-radius: 3px;
+}
+.deck-row { display: grid; gap: 12px; }
+#decks[data-count="2"] .deck-row { grid-template-columns: 1fr 1fr; }
+@media (max-width: 900px) { #decks[data-count="2"] .deck-row { grid-template-columns: 1fr; } }
+.deck.drop { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+tbody tr[draggable="true"] { cursor: grab; }
+
+.deck {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px; display: flex; flex-direction: column; gap: 8px;
+}
+.deck.focused { border-color: var(--accent); }
+
+.deck-head { display: flex; align-items: center; gap: 10px; }
+.art {
+  width: 46px; height: 46px; flex: none; border-radius: 5px; overflow: hidden;
+  background: var(--sunken); display: grid; place-items: center;
+}
+.art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.art-empty { color: var(--ink-soft); font-weight: 700; font-size: var(--fs-lead); }
+.ident { min-width: 0; flex: 1; }
+.deck-title {
+  font-weight: 600; font-size: var(--fs-body);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.deck-artist {
+  color: var(--ink-soft); font-size: var(--fs-small);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.clocks { text-align: right; flex: none; }
+.clocks .clock { font-size: var(--fs-lead); font-weight: 600; }
+.clocks .remain { font-size: var(--fs-small); color: var(--ink-soft); }
+
+/* Proportions follow a CDJ layout: the scrolling view carries the detail and
+   gets the room, with the whole-track strip about half its height beneath.
+   The selector covers both placements — inside a deck panel with one deck, and
+   hoisted into a full-width lane with two. */
+.deck canvas.wave.detail,
+.lane canvas.wave.detail { height: 132px; }
+.deck canvas.wave.overview { height: 66px; }
+.lane canvas.wave.detail { border-radius: 0; }
+@media (max-width: 700px) {
+  .deck canvas.wave.detail,
+  .lane canvas.wave.detail { height: 108px; }
+  .deck canvas.wave.overview { height: 48px; }
+}
+
+.deck-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+button.dbtn {
+  font: inherit; font-size: var(--fs-micro); font-weight: 650; letter-spacing: .06em;
+  padding: 7px 10px; cursor: pointer; border-radius: 6px;
+  background: var(--sunken); color: var(--ink); border: 1px solid var(--line);
+}
+button.dbtn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button.dbtn:disabled { opacity: .4; cursor: not-allowed; }
+button.dbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.dbtn.play { min-width: 44px; font-size: var(--fs-body); }
+button.dbtn.cue { color: var(--memory); border-color: color-mix(in srgb, var(--memory) 45%, transparent); }
+button.dbtn.sync { margin-left: auto; }
+
+.tempo { display: flex; align-items: center; gap: 6px; }
+.bpm-read {
+  font-size: var(--fs-lead); font-weight: 650;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.pitch-read {
+  font-size: var(--fs-micro); color: var(--ink-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums; min-width: 5ch;
+}
+input.fader { width: 108px; accent-color: var(--accent); }
+.ranges { display: flex; gap: 2px; }
+button.rbtn {
+  font: inherit; font-size: var(--fs-micro); padding: 3px 5px; cursor: pointer;
+  background: none; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+}
+button.rbtn.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+
+.pads { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+button.pad {
+  font: inherit; font-size: var(--fs-micro); font-weight: 700;
+  padding: 7px 0; cursor: pointer; border-radius: 5px;
+  background: var(--sunken); color: var(--ink-soft); border: 1px solid var(--line);
+}
+button.pad.set { color: var(--hot); border-color: color-mix(in srgb, var(--hot) 50%, transparent); }
+button.pad:disabled { opacity: .35; cursor: default; }
+button.pad.set:hover { background: var(--hot); color: var(--on-accent); }
+
+.load-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+
+/* Deck chrome in the classic skin */
+:root[data-skin="classic"] .deck {
+  background: var(--chassis); border-radius: 0;
+  border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
+}
+:root[data-skin="classic"] .deck.focused { border-color: var(--phosphor); }
+:root[data-skin="classic"] .deck-title { color: var(--phosphor); }
+:root[data-skin="classic"] .clocks .clock { color: var(--phosphor); }
+:root[data-skin="classic"] .bpm-read { color: var(--phosphor); }
+:root[data-skin="classic"] button.dbtn,
+:root[data-skin="classic"] button.rbtn,
+:root[data-skin="classic"] button.pad {
+  border-radius: 0; background: var(--chassis); color: var(--ink);
+  border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
+}
+:root[data-skin="classic"] button.pad.set { color: var(--phosphor); }
+:root[data-skin="classic"] button.rbtn.on { background: #000; color: var(--phosphor); }
+:root[data-skin="classic"] .art { border-radius: 0; background: #000; }
+
 /* --- track editor ---------------------------------------------------------- */
 
 .editor {
@@ -139,7 +303,7 @@ header h1 b { color: var(--accent); font-weight: 650; }
 .editor .field { display: contents; }
 .editor .field.changed label { color: var(--accent); }
 input.edit {
-  font: inherit; font-size: 13px; padding: 5px 8px; width: 100%; max-width: 420px;
+  font: inherit; font-size: var(--fs-body); padding: 5px 8px; width: 100%; max-width: 420px;
   background: var(--ground); color: var(--ink);
   border: 1px solid transparent; border-radius: 6px;
 }
@@ -150,7 +314,7 @@ input.edit:focus { outline: none; border-color: var(--accent); background: var(-
 .stars-edit { display: flex; gap: 1px; }
 button.star {
   background: none; border: 0; cursor: pointer; padding: 0 1px;
-  font-size: 19px; line-height: 1; color: var(--line);
+  font-size: var(--fs-title); line-height: 1; color: var(--line);
 }
 button.star.on { color: var(--star); }
 button.star:hover { color: var(--star); }
@@ -163,7 +327,7 @@ button.swatch-btn {
 }
 button.swatch-btn.on { border-color: var(--ink); }
 button.swatch-btn.none {
-  background: none; color: var(--ink-soft); font-size: 13px; line-height: 1;
+  background: none; color: var(--ink-soft); font-size: var(--fs-body); line-height: 1;
   box-shadow: none; border: 1px solid var(--line);
 }
 button.swatch-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -183,7 +347,7 @@ tbody tr.edited td.swatch { position: relative; }
   border: 1px dashed var(--line); border-radius: 16px;
 }
 #dropzone.over { border-color: var(--accent); background: var(--sunken); }
-#dropzone h2 { margin: 0 0 10px; font-size: 21px; letter-spacing: -0.02em; text-wrap: balance; }
+#dropzone h2 { margin: 0 0 10px; font-size: var(--fs-clock); letter-spacing: -0.02em; text-wrap: balance; }
 #dropzone p { color: var(--ink-soft); margin: 7px 0; max-width: 46ch; margin-inline: auto; }
 #dropzone code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -192,27 +356,33 @@ tbody tr.edited td.swatch { position: relative; }
 .pick {
   display: inline-block; margin-top: 18px; padding: 9px 20px; cursor: pointer; font: inherit;
   background: var(--accent); color: var(--on-accent);
-  border: 1px solid var(--accent); border-radius: 8px; font-weight: 600; font-size: 13px;
+  border: 1px solid var(--accent); border-radius: 8px; font-weight: 600; font-size: var(--fs-body);
 }
 label.pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 label.pick input { position: absolute; opacity: 0; width: 0; height: 0; }
 #dropzone .note {
-  font-size: 12px; color: var(--ink-soft);
+  font-size: var(--fs-small); color: var(--ink-soft);
   margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line);
 }
 
 /* --- shell ---------------------------------------------------------------- */
 
 #main { display: grid; grid-template-columns: 244px 1fr; min-height: calc(100vh - 48px); }
-@media (max-width: 780px) { #main { grid-template-columns: 1fr; } }
+/* Hiding the sidebar takes it out of the grid, so the collapsed state must
+   drop to a single track — leaving two would put the content in the empty
+   first column and squeeze it to nothing. */
+#main[data-sidebar="collapsed"] { grid-template-columns: 1fr; }
+#main[data-sidebar="collapsed"] #sidebar { display: none; }
+@media (max-width: 780px) { #main, #main[data-sidebar="collapsed"] { grid-template-columns: 1fr; } }
+button.sidetoggle { min-width: 28px; padding: 5px 8px; letter-spacing: 0; }
 
 #sidebar {
   background: var(--panel); border-right: 1px solid var(--line);
   padding: 16px 10px; display: flex; flex-direction: column; gap: 4px;
 }
 .device { padding: 0 8px 15px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
-.device-name { font-weight: 650; font-size: 15px; letter-spacing: -0.01em; }
-.device-meta { color: var(--ink-soft); font-size: 12px; }
+.device-name { font-weight: 650; font-size: var(--fs-lead); letter-spacing: -0.01em; }
+.device-meta { color: var(--ink-soft); font-size: var(--fs-small); }
 .sec-title { padding: 10px 8px 4px; }
 button.nav {
   display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
@@ -223,17 +393,17 @@ button.nav {
 button.nav:hover { background: var(--sunken); }
 button.nav:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 button.nav.active { background: var(--accent); color: var(--on-accent); }
-button.nav .n { font-size: 12px; opacity: .7; font-variant-numeric: tabular-nums; }
+button.nav .n { font-size: var(--fs-small); opacity: .7; font-variant-numeric: tabular-nums; }
 
 #content { padding: 16px 18px 40px; overflow-x: auto; }
 
 /* --- track table ---------------------------------------------------------- */
 
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: var(--fs-body); }
 th {
   text-align: left; padding: 7px 9px;
   border-bottom: 1px solid var(--line);
-  font-size: 10px; font-weight: 600; letter-spacing: .13em;
+  font-size: var(--fs-micro); font-weight: 600; letter-spacing: .13em;
   text-transform: uppercase; color: var(--ink-soft);
 }
 th.r, td.num { text-align: right; }
@@ -251,8 +421,17 @@ td.title, td.artist {
 }
 td.title  { font-weight: 550; max-width: 34ch; }
 td.artist { max-width: 22ch; color: var(--ink-soft); }
-/* Below this the artist column is the first thing worth sacrificing. */
+/* Shed columns as room runs out: artist first, then the analysis figures, so
+   what survives on a phone is the title, its length and its rating. */
 @media (max-width: 1040px) { td.artist, th.artist { display: none; } }
+@media (max-width: 700px) {
+  td.key, th.key { display: none; }
+  td.title { max-width: 20ch; }
+}
+@media (max-width: 520px) {
+  td.bpm, th.bpm { display: none; }
+  td.title { max-width: 14ch; }
+}
 td.num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 td.swatch { width: 20px; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
@@ -264,9 +443,9 @@ td.swatch { width: 20px; }
   margin-top: 24px; padding: 18px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
 }
-#detail h2 { margin: 0 0 5px; font-size: 18px; letter-spacing: -0.02em; text-wrap: balance; }
+#detail h2 { margin: 0 0 5px; font-size: var(--fs-title); letter-spacing: -0.02em; text-wrap: balance; }
 #detail .meta {
-  color: var(--ink-soft); font-size: 13px; margin-bottom: 16px;
+  color: var(--ink-soft); font-size: var(--fs-body); margin-bottom: 16px;
   display: flex; flex-wrap: wrap; gap: 4px 12px;
 }
 #detail .meta .v { color: var(--ink); font-weight: 550; }
@@ -290,7 +469,7 @@ canvas.wave.overview { height: 46px; border-top: 0; border-radius: 0 0 9px 9px; 
 }
 button.tbtn {
   min-width: 42px; height: 32px; padding: 0 10px;
-  font-size: 14px; line-height: 1; cursor: pointer;
+  font-size: var(--fs-body); line-height: 1; cursor: pointer;
   background: var(--sunken); color: var(--ink);
   border: 1px solid var(--line); border-radius: 7px;
 }
@@ -298,18 +477,18 @@ button.tbtn:hover:not(:disabled) { border-color: var(--accent); color: var(--acc
 button.tbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button.tbtn:disabled { opacity: .4; cursor: not-allowed; }
 .clock {
-  font-size: 16px; font-weight: 600; letter-spacing: .01em;
+  font-size: var(--fs-lead); font-weight: 600; letter-spacing: .01em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
   padding-left: 4px;
 }
 .clock-total {
-  font-size: 13px; color: var(--ink-soft);
+  font-size: var(--fs-body); color: var(--ink-soft);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .zoom { display: flex; align-items: center; gap: 5px; margin-left: auto; }
 button.zbtn {
-  padding: 4px 9px; font-size: 11px; cursor: pointer;
+  padding: 4px 9px; font-size: var(--fs-small); cursor: pointer;
   background: none; color: var(--ink-soft);
   border: 1px solid var(--line); border-radius: 6px;
   font-variant-numeric: tabular-nums;
@@ -317,10 +496,10 @@ button.zbtn {
 button.zbtn:hover { color: var(--ink); }
 button.zbtn.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.nowav { font-size: 12px; color: var(--ink-soft); }
+.nowav { font-size: var(--fs-small); color: var(--ink-soft); }
 .legend { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
 .chip {
-  font-size: 11px; font-weight: 550; padding: 3px 10px; border-radius: 999px;
+  font-size: var(--fs-small); font-weight: 550; padding: 3px 10px; border-radius: 999px;
   background: var(--sunken); color: var(--ink-soft); border: 1px solid var(--line);
 }
 .chip.hot  { color: var(--hot);    border-color: color-mix(in srgb, var(--hot) 45%, transparent); }
@@ -328,7 +507,7 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 .chip.loop { color: var(--ink); border-color: var(--ink-soft); }
 .path {
   margin-top: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px; color: var(--ink-soft); word-break: break-all;
+  font-size: var(--fs-small); color: var(--ink-soft); word-break: break-all;
 }
 
 /* ===========================================================================
@@ -381,7 +560,7 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   background: var(--chassis-dark);
   color: var(--ink);
   font-family: ui-monospace, "Lucida Console", "Courier New", monospace;
-  font-size: 11px;
+  font-size: var(--fs-small);
 }
 
 /* Raised and inset edges, the Win95 way. */
@@ -418,7 +597,7 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   min-height: 22px;
 }
 :root[data-skin="classic"] header h1 {
-  font-size: 10px; letter-spacing: .28em; text-transform: uppercase;
+  font-size: var(--fs-micro); letter-spacing: .28em; text-transform: uppercase;
   color: var(--phosphor); font-weight: 700; white-space: nowrap;
 }
 :root[data-skin="classic"] header h1 b { color: var(--phosphor); }
@@ -433,7 +612,7 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 
 :root[data-skin="classic"] button.skin {
   background: var(--chassis); color: var(--phosphor);
-  font-size: 9px; padding: 3px 7px; letter-spacing: .1em;
+  font-size: var(--fs-micro); padding: 3px 7px; letter-spacing: .1em;
 }
 
 /* --- the playlist --------------------------------------------------------- */
@@ -442,18 +621,27 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 :root[data-skin="classic"] #sidebar { background: var(--chassis); padding: 6px 5px; gap: 1px; }
 :root[data-skin="classic"] .device { padding: 2px 5px 8px; }
 :root[data-skin="classic"] .device-name {
-  color: var(--phosphor); font-size: 11px; letter-spacing: .05em;
+  color: var(--phosphor); font-size: var(--fs-small); letter-spacing: .05em;
 }
-:root[data-skin="classic"] .device-meta { color: var(--ink-soft); font-size: 10px; }
-:root[data-skin="classic"] .sec-title { padding: 6px 5px 2px; font-size: 9px; }
+:root[data-skin="classic"] .device-meta { color: var(--ink-soft); font-size: var(--fs-micro); }
+:root[data-skin="classic"] .sec-title { padding: 6px 5px 2px; font-size: var(--fs-micro); }
 :root[data-skin="classic"] button.nav {
-  border-radius: 0; color: var(--ink); font-size: 11px; padding: 3px 6px;
+  border-radius: 0; color: var(--ink); font-size: var(--fs-small); padding: 3px 6px;
 }
 :root[data-skin="classic"] button.nav.active { background: var(--select); color: #fff; }
 :root[data-skin="classic"] button.nav .n { color: inherit; }
 
-:root[data-skin="classic"] #content { background: #000; padding: 0; margin: 0; }
-:root[data-skin="classic"] table { font-family: inherit; font-size: 11px; }
+:root[data-skin="classic"] #content { background: var(--chassis); padding: 6px; }
+/* Winamp frames the playlist as its own window: a raised chassis edge with the
+   list inset inside it, not a list flush against the panel. */
+:root[data-skin="classic"] #list {
+  background: #000; padding: 2px 0;
+  border-style: solid; border-width: 1px;
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+  box-shadow: 0 0 0 1px var(--bevel-lo);
+  margin-bottom: 12px;
+}
+:root[data-skin="classic"] table { font-family: inherit; font-size: var(--fs-small); }
 :root[data-skin="classic"] thead { display: none; }
 :root[data-skin="classic"] #list tbody { counter-reset: track; }
 :root[data-skin="classic"] td {
@@ -474,81 +662,81 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 :root[data-skin="classic"] tbody tr.sel { background: var(--select); }
 :root[data-skin="classic"] tbody tr.sel td,
 :root[data-skin="classic"] tbody tr.sel td.title::before { color: #fff; }
-:root[data-skin="classic"] .stars { color: var(--phosphor); font-size: 9px; }
+:root[data-skin="classic"] .stars { color: var(--phosphor); font-size: var(--fs-micro); }
 :root[data-skin="classic"] tbody tr.edited td.title { color: #fff; font-style: normal; }
 
 /* --- the player window ---------------------------------------------------- */
 
 :root[data-skin="classic"] #detail { background: var(--chassis); padding: 8px; }
 :root[data-skin="classic"] #detail h2 {
-  color: var(--phosphor); font-size: 12px; font-weight: 400; letter-spacing: .02em;
+  color: var(--phosphor); font-size: var(--fs-small); font-weight: 400; letter-spacing: .02em;
 }
 :root[data-skin="classic"] #detail .meta,
-:root[data-skin="classic"] #detail .meta .v { color: var(--phosphor-dim); font-size: 10px; }
+:root[data-skin="classic"] #detail .meta .v { color: var(--phosphor-dim); font-size: var(--fs-micro); }
 :root[data-skin="classic"] #detail .meta .v { color: var(--phosphor); }
 :root[data-skin="classic"] canvas.wave { border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); }
 
 /* The time readout: oversized digits on a black inset, as on the main window. */
 :root[data-skin="classic"] .clock {
   background: #000; color: var(--phosphor);
-  padding: 1px 10px; font-size: 26px; font-weight: 400;
+  padding: 1px 10px; font-size: var(--fs-clock); font-weight: 400;
   letter-spacing: .04em; line-height: 1.15;
 }
-:root[data-skin="classic"] .clock-total { color: var(--phosphor-dim); font-size: 10px; }
+:root[data-skin="classic"] .clock-total { color: var(--phosphor-dim); font-size: var(--fs-micro); }
 :root[data-skin="classic"] .transport { gap: 4px; margin-top: 8px; }
 :root[data-skin="classic"] button.tbtn {
   background: var(--chassis); color: var(--ink);
-  min-width: 26px; height: 24px; padding: 0 5px; font-size: 11px;
+  min-width: 26px; height: 24px; padding: 0 5px; font-size: var(--fs-small);
 }
 :root[data-skin="classic"] button.tbtn:active,
 :root[data-skin="classic"] button.zbtn:active {
   border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
 }
 :root[data-skin="classic"] button.zbtn {
-  background: var(--chassis); color: var(--ink); font-size: 9px; padding: 3px 6px;
+  background: var(--chassis); color: var(--ink); font-size: var(--fs-micro); padding: 3px 6px;
 }
 :root[data-skin="classic"] button.zbtn.on {
   background: #000; color: var(--phosphor);
   border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
 }
 :root[data-skin="classic"] .chip {
-  border-radius: 0; background: #000; font-size: 9px; padding: 2px 6px;
+  border-radius: 0; background: #000; font-size: var(--fs-micro); padding: 2px 6px;
   border-color: var(--bevel-lo);
 }
 :root[data-skin="classic"] .editor { gap: 3px 8px; grid-template-columns: 70px 1fr; }
-:root[data-skin="classic"] .editor .label { font-size: 9px; }
+:root[data-skin="classic"] .editor .label { font-size: var(--fs-micro); }
 :root[data-skin="classic"] input.edit {
   background: #000; color: var(--phosphor); font-family: inherit;
-  font-size: 11px; padding: 2px 5px;
+  font-size: var(--fs-small); padding: 2px 5px;
 }
-:root[data-skin="classic"] button.star { font-size: 14px; color: var(--bevel-hi); }
+:root[data-skin="classic"] button.star { font-size: var(--fs-body); color: var(--bevel-hi); }
 :root[data-skin="classic"] button.star.on { color: var(--phosphor); }
-:root[data-skin="classic"] .path { color: var(--phosphor-dim); font-size: 9px; }
+:root[data-skin="classic"] .path { color: var(--phosphor-dim); font-size: var(--fs-micro); }
 
 /* --- bars ----------------------------------------------------------------- */
 
 :root[data-skin="classic"] #savebar {
   background: var(--titlebar); border-bottom-color: var(--bevel-lo); padding: 5px 8px;
 }
-:root[data-skin="classic"] #savebar .count { color: var(--phosphor); font-size: 10px; }
+:root[data-skin="classic"] #savebar .count { color: var(--phosphor); font-size: var(--fs-micro); }
 :root[data-skin="classic"] #savebar button {
-  background: var(--chassis); color: var(--ink); font-size: 10px; padding: 4px 10px;
+  background: var(--chassis); color: var(--ink); font-size: var(--fs-micro); padding: 4px 10px;
 }
 :root[data-skin="classic"] #savebar .save { color: var(--phosphor); }
-:root[data-skin="classic"] #status { background: #000; color: var(--phosphor); font-size: 10px; }
+:root[data-skin="classic"] #status { background: #000; color: var(--phosphor); font-size: var(--fs-micro); }
 :root[data-skin="classic"] #dropzone { background: var(--chassis); }
 :root[data-skin="classic"] #dropzone h2 {
-  color: var(--phosphor); font-size: 14px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--phosphor); font-size: var(--fs-body); letter-spacing: .12em; text-transform: uppercase;
 }
-:root[data-skin="classic"] #dropzone p { color: var(--ink); font-size: 11px; }
+:root[data-skin="classic"] #dropzone p { color: var(--ink); font-size: var(--fs-small); }
 :root[data-skin="classic"] .pick {
-  background: var(--chassis); color: var(--ink); font-size: 10px;
+  background: var(--chassis); color: var(--ink); font-size: var(--fs-micro);
   letter-spacing: .1em; text-transform: uppercase; font-weight: 400;
 }
 
 /* Skin switch, in the modern skin */
 button.skin {
-  font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  font: inherit; font-size: var(--fs-micro); letter-spacing: .12em; text-transform: uppercase;
   padding: 5px 10px; cursor: pointer; border-radius: 6px;
   background: var(--sunken); color: var(--ink-soft); border: 1px solid var(--line);
 }
@@ -563,6 +751,8 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   <h1>One<b>Library</b> Viewer</h1>
   <span class="label">decrypts rekordbox exports in your browser</span>
   <span class="spacer"></span>
+  <button class="skin sidetoggle" id="sidetoggle" type="button" aria-controls="sidebar">◂</button>
+  <button class="skin" id="decktoggle" type="button">Two decks</button>
   <button class="skin" id="skin" type="button">Classic skin</button>
 </header>
 <div id="status" hidden></div>
@@ -585,6 +775,7 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 <div id="main" hidden>
   <aside id="sidebar"></aside>
   <main id="content">
+    <div id="decks"></div>
     <div id="list"></div>
     <div id="detail" hidden></div>
   </main>

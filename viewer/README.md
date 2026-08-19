@@ -67,18 +67,47 @@ every track measured, which is bass-band behaviour, so it is rendered as blue.
 ## Playback
 
 Drop the whole device and tracks play from their own files — no copying, no
-upload. The deck follows the CDJ convention: a zoomed view scrolls under a
-playhead fixed at the centre, with the beatgrid drawn from the real analysis
-and downbeats emphasised, over a static overview strip showing the whole track.
+upload. Load a track by dragging it from the list onto a deck, or with the
+LOAD button.
+
+One deck by default; **Two decks** switches to the mixing layout, where the
+scrolling lanes run the full width and stack so both playheads sit on one
+vertical line — which is what makes the phase difference between two tracks
+visible. Each deck has artwork, elapsed and remaining time, CUE and play, hot
+cue pads A–H, a pitch fader with ±6/10/16/100% ranges, and BEAT SYNC.
+
+**BEAT SYNC matches tempo *and* phase.** Matching BPM alone leaves two tracks
+running at the same speed but out of step. After the tempo is set, the deck
+moves to the nearer beat boundary and takes on the other deck's position within
+its beat, so the transients land together — and the correction is always under
+half a beat, so sync never lurches. If the tempo difference is beyond the pitch
+range it says so rather than doing nothing.
 
 | Control | |
 |---|---|
-| `space` | play / pause |
+| `space` | play / pause the focused deck |
 | `←` `→` | previous / next cue |
+| `esc` | CUE |
+| `q` `w` | focus deck A / B |
 | click or drag the overview | seek |
-| drag the detail view | scrub at the current zoom |
+| drag the scrolling view | scrub |
 
-Zoom runs 4s–32s across the deck.
+## Waveforms
+
+The colour waveform is drawn as three bands from the `PWV5` data — bass, mid
+and highs — painted widest first so they read as one shape.
+
+Two details make it behave like a DJ display rather than a plot:
+
+**Bins are anchored to source columns, not to screen position.** Re-slicing the
+data by pixel every frame makes the peak inside each bin jump between
+neighbouring samples, and the whole envelope crawls. Anchoring means a bin
+always covers the same samples and scrolling only changes where it is drawn.
+
+**Heights get a perceptual curve.** Music sits far below peak most of the time —
+across a typical window the mean column height is about 0.16 against a max near
+0.94. Drawn literally that is a thin line with occasional spikes, so heights are
+raised to a fractional power, lifting the body without touching the peaks.
 
 ## Editing
 
