@@ -115,6 +115,72 @@ input[type=text]:focus-visible { outline: 2px solid var(--accent); outline-offse
 #status[data-kind=ok]    { color: var(--ok); }
 #status[data-kind=error] { color: var(--err); }
 
+/* --- save bar -------------------------------------------------------------- */
+
+#savebar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 18px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  border-bottom: 1px solid var(--accent);
+}
+#savebar .count { font-size: 13px; font-weight: 550; }
+#savebar button {
+  font: inherit; font-size: 13px; padding: 7px 14px; cursor: pointer;
+  border-radius: 7px; border: 1px solid var(--line);
+}
+#savebar .save {
+  margin-left: auto; font-weight: 600;
+  background: var(--accent); color: var(--on-accent); border-color: var(--accent);
+}
+#savebar .save:disabled { opacity: .6; cursor: progress; }
+#savebar .revert { background: var(--panel); color: var(--ink); }
+#savebar button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* --- track editor ---------------------------------------------------------- */
+
+.editor {
+  display: grid; grid-template-columns: 84px 1fr; gap: 7px 12px;
+  align-items: center; margin-bottom: 16px;
+}
+.editor .field { display: contents; }
+.editor .field.changed label { color: var(--accent); }
+input.edit {
+  font: inherit; font-size: 13px; padding: 5px 8px; width: 100%; max-width: 420px;
+  background: var(--ground); color: var(--ink);
+  border: 1px solid transparent; border-radius: 6px;
+}
+input.edit:hover { border-color: var(--line); }
+input.edit:focus { outline: none; border-color: var(--accent); background: var(--panel); }
+.field.changed input.edit { border-color: var(--accent); }
+
+.stars-edit { display: flex; gap: 1px; }
+button.star {
+  background: none; border: 0; cursor: pointer; padding: 0 1px;
+  font-size: 19px; line-height: 1; color: var(--line);
+}
+button.star.on { color: var(--star); }
+button.star:hover { color: var(--star); }
+button.star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.swatches { display: flex; gap: 5px; align-items: center; }
+button.swatch-btn {
+  width: 19px; height: 19px; border-radius: 50%; cursor: pointer; padding: 0;
+  border: 2px solid transparent; box-shadow: 0 0 0 1px var(--line) inset;
+}
+button.swatch-btn.on { border-color: var(--ink); }
+button.swatch-btn.none {
+  background: none; color: var(--ink-soft); font-size: 13px; line-height: 1;
+  box-shadow: none; border: 1px solid var(--line);
+}
+button.swatch-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+tbody tr.edited td.title { font-style: italic; }
+tbody tr.edited td.swatch::before {
+  content: ''; position: absolute; margin-left: -7px; width: 3px; height: 15px;
+  background: var(--accent); border-radius: 2px;
+}
+tbody tr.edited td.swatch { position: relative; }
+
 /* --- drop zone ------------------------------------------------------------ */
 
 #dropzone {
@@ -280,6 +346,7 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   <input type="text" id="key" placeholder="passphrase (optional)" spellcheck="false" aria-label="SQLCipher passphrase">
 </header>
 <div id="status" hidden></div>
+<div id="savebar" hidden></div>
 
 <section id="dropzone">
   <h2>Drop a rekordbox device here</h2>

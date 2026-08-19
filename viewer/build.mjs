@@ -11,7 +11,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const order = ['sqlcipher.js', 'sqlite.js', 'anlz.js', 'waveform.js', 'player.js', 'app.js'];
+const order = ['sqlcipher.js', 'sqlite.js', 'sqlite_write.js', 'anlz.js', 'waveform.js', 'player.js', 'editor.js', 'app.js'];
 
 const modules = order.map((name) => {
   const src = readFileSync(join(root, 'src', name), 'utf8');

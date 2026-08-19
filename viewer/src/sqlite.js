@@ -162,7 +162,11 @@ export class SQLiteDatabase {
     for (const [, row] of this._walk(1)) {
       const [type, name, , rootpage, sql] = row;
       if (type !== 'table' || String(name).startsWith('sqlite_')) continue;
-      tables.set(name, { name, rootpage, sql, columns: parseColumns(sql) });
+      tables.set(name, {
+        name, rootpage, sql,
+        columns: parseColumns(sql),
+        rowidAlias: rowidAlias(sql),
+      });
     }
     return tables;
   }
@@ -176,8 +180,9 @@ export class SQLiteDatabase {
     for (const [rowid, values] of this._walk(meta.rootpage)) {
       const obj = {};
       cols.forEach((c, i) => {
-        // An INTEGER PRIMARY KEY column is stored as NULL; the rowid is the value.
-        obj[c] = values[i] === null && c.endsWith('_id') && i === 0 ? rowid : values[i] ?? null;
+        // An INTEGER PRIMARY KEY column is not stored in the record at all --
+        // it aliases the rowid, so the value comes from there.
+        obj[c] = c === meta.rowidAlias ? rowid : values[i] ?? null;
       });
       rows.push(obj);
     }
@@ -185,6 +190,16 @@ export class SQLiteDatabase {
   }
 
   tableNames() { return [...this.tables.keys()].sort(); }
+}
+
+/**
+ * The column that aliases the rowid, if any.
+ *
+ * Only `INTEGER PRIMARY KEY` aliases the rowid -- `INT PRIMARY KEY` and every
+ * other type do not, and are stored in the record normally.
+ */
+export function rowidAlias(sql) {
+  return /[(,]\s*`?(\w+)`?\s+integer\s+primary\s+key/i.exec(sql || '')?.[1] ?? null;
 }
 
 /** Extract column names from a CREATE TABLE statement. */

@@ -10,6 +10,7 @@ import { SQLiteDatabase } from './sqlite.js';
 import { parseAnlz } from './anlz.js';
 import { drawOverview, drawDetail, TRACK_COLORS } from './waveform.js';
 import { Player, fmtPosition } from './player.js';
+import { Editor, EDITABLE, buildEditedDatabase, downloadDatabase } from './editor.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -30,6 +31,7 @@ const state = {
 };
 
 const player = new Player();
+const editor = new Editor();
 let rafHandle = null;
 
 // -- loading ---------------------------------------------------------------
@@ -231,22 +233,27 @@ function renderList() {
 
   for (const t of visibleTracks()) {
     const f = trackFields(t);
+    const rating = editor.get(t.content_id, 'rating', t.rating);
+    const colorId = editor.get(t.content_id, 'color_id', t.color_id);
+    const title = editor.get(t.content_id, 'title', t.title);
     const tr = el('tr');
-    tr.className = state.selected?.content_id === t.content_id ? 'sel' : '';
+    tr.className = [
+      state.selected?.content_id === t.content_id ? 'sel' : '',
+      editor.changes.has(t.content_id) ? 'edited' : '',
+    ].filter(Boolean).join(' ');
     const swatch = el('td', 'swatch');
-    if (f.color) {
+    if (colorId) {
       const dot = el('span', 'dot');
-      dot.style.background = f.color;
-      dot.title = f.colorName;
+      dot.style.background = TRACK_COLORS[colorId] || '#888';
       swatch.append(dot);
     }
     tr.append(swatch);
-    tr.append(el('td', 'title', t.title || ''));
+    tr.append(el('td', 'title', title || ''));
     tr.append(el('td', 'artist', f.artist));
     tr.append(el('td', 'num', t.bpmx100 ? (t.bpmx100 / 100).toFixed(2) : ''));
     tr.append(el('td', null, f.key));
     tr.append(el('td', 'num', fmtTime(t.length)));
-    tr.append(el('td', 'stars', '★'.repeat(t.rating || 0)));
+    tr.append(el('td', 'stars', '★'.repeat(rating || 0)));
     tr.onclick = () => selectTrack(t);
     tbody.append(tr);
   }
@@ -291,6 +298,92 @@ function transportButton(label, title, onClick) {
   return b;
 }
 
+/** The editable metadata form for one track. */
+function buildEditor(track, fields) {
+  const wrap = el('div', 'editor');
+  const id = track.content_id;
+
+  const originalOf = (spec) =>
+    spec.kind === 'lookup' ? fields[spec.field] || '' : track[spec.field] ?? null;
+
+  for (const spec of EDITABLE) {
+    const original = originalOf(spec);
+    const current = editor.get(id, spec.field, original);
+    const row = el('div', 'field' + (editor.has(id, spec.field) ? ' changed' : ''));
+    row.append(el('label', 'label', spec.label));
+
+    if (spec.kind === 'rating') {
+      const stars = el('div', 'stars-edit');
+      const paint = (value) => {
+        [...stars.children].forEach((s, i) => s.classList.toggle('on', i < value));
+      };
+      for (let i = 1; i <= 5; i++) {
+        const star = el('button', 'star', '★');
+        star.title = `${i} star${i === 1 ? '' : 's'}`;
+        star.onclick = () => {
+          const next = editor.get(id, 'rating', original) === i ? 0 : i;
+          editor.set(id, 'rating', next, original);
+          paint(next);
+          row.classList.toggle('changed', editor.has(id, 'rating'));
+          renderList();
+          renderSaveBar();
+        };
+        stars.append(star);
+      }
+      paint(current || 0);
+      row.append(stars);
+    } else if (spec.kind === 'color') {
+      const swatches = el('div', 'swatches');
+      const paint = (value) => {
+        [...swatches.children].forEach((s) =>
+          s.classList.toggle('on', Number(s.dataset.id) === Number(value))
+        );
+      };
+      for (const c of state.db.select('color')) {
+        const b = el('button', 'swatch-btn');
+        b.dataset.id = c.color_id;
+        b.style.background = TRACK_COLORS[c.color_id] || '#888';
+        b.title = c.name;
+        b.onclick = () => {
+          const next = Number(editor.get(id, 'color_id', original)) === c.color_id ? null : c.color_id;
+          editor.set(id, 'color_id', next, original);
+          paint(next);
+          row.classList.toggle('changed', editor.has(id, 'color_id'));
+          renderList();
+          renderSaveBar();
+        };
+        swatches.append(b);
+      }
+      const none = el('button', 'swatch-btn none', '×');
+      none.title = 'No colour';
+      none.onclick = () => {
+        editor.set(id, 'color_id', null, original);
+        paint(null);
+        row.classList.toggle('changed', editor.has(id, 'color_id'));
+        renderList();
+        renderSaveBar();
+      };
+      swatches.append(none);
+      paint(current);
+      row.append(swatches);
+    } else {
+      const input = el('input', 'edit');
+      input.type = 'text';
+      input.value = current ?? '';
+      input.placeholder = '—';
+      input.oninput = () => {
+        editor.set(id, spec.field, input.value, original);
+        row.classList.toggle('changed', editor.has(id, spec.field));
+        renderList();
+        renderSaveBar();
+      };
+      row.append(input);
+    }
+    wrap.append(row);
+  }
+  return wrap;
+}
+
 async function selectTrack(t) {
   state.selected = t;
   renderList();
@@ -301,21 +394,21 @@ async function selectTrack(t) {
   const f = trackFields(t);
   detail.append(el('h2', null, t.title || '(untitled)'));
 
-  const meta = el('div', 'meta');
+  detail.append(buildEditor(t, f));
+
+  const readonly = el('div', 'meta');
   for (const [k, v] of [
-    ['Artist', f.artist], ['Album', f.album], ['Genre', f.genre],
     ['BPM', t.bpmx100 ? (t.bpmx100 / 100).toFixed(2) : ''],
     ['Key', f.key], ['Length', fmtTime(t.length)],
-    ['Rating', t.rating ? '★'.repeat(t.rating) : ''],
     ['Bitrate', t.bitrate ? `${t.bitrate} kbps` : ''],
   ]) {
     if (!v) continue;
     const item = el('span');
     item.append(el('span', 'label', k + ' '));
     item.append(el('span', 'v', v));
-    meta.append(item);
+    readonly.append(item);
   }
-  detail.append(meta);
+  detail.append(readonly);
 
   const overview = el('canvas', 'wave overview');
   const detailCanvas = el('canvas', 'wave detail');
@@ -436,11 +529,56 @@ async function selectTrack(t) {
   window.onresize = redraw;
 }
 
+/** The save bar, shown only once there is something to save. */
+function renderSaveBar() {
+  const bar = $('#savebar');
+  bar.hidden = !editor.dirty;
+  if (!editor.dirty) return;
+  bar.replaceChildren();
+  const n = editor.count;
+  const tracks = editor.changes.size;
+  bar.append(
+    el('span', 'count',
+       `${n} change${n === 1 ? '' : 's'} on ${tracks} track${tracks === 1 ? '' : 's'}`)
+  );
+
+  const save = el('button', 'save', 'Download edited database');
+  save.onclick = async () => {
+    save.disabled = true;
+    save.textContent = 'Building…';
+    try {
+      const key = $('#key').value.trim() || undefined;
+      const bytes = await buildEditedDatabase(state.db, editor, key);
+      downloadDatabase(bytes);
+      status(
+        'Saved exportLibrary.db. Copy it to PIONEER/rekordbox/ on the device, ' +
+        'replacing the original.',
+        'ok'
+      );
+    } catch (err) {
+      status(`Could not build the database: ${err.message}`, 'error');
+    } finally {
+      save.disabled = false;
+      save.textContent = 'Download edited database';
+    }
+  };
+  bar.append(save);
+
+  const revert = el('button', 'revert', 'Discard');
+  revert.onclick = () => {
+    editor.clear();
+    if (state.selected) selectTrack(state.selected);
+    render();
+  };
+  bar.append(revert);
+}
+
 function render() {
   $('#dropzone').hidden = true;
   $('#main').hidden = false;
   renderSidebar();
   renderList();
+  renderSaveBar();
 }
 
 // -- wiring ----------------------------------------------------------------
@@ -477,5 +615,5 @@ export function init() {
 
   // Public API: drive the viewer without a drag-and-drop gesture. `files` maps
   // lowercase device-relative paths to File or Blob objects.
-  window.OneLibraryViewer = { load, selectTrack, state, player };
+  window.OneLibraryViewer = { load, selectTrack, state, player, editor };
 }

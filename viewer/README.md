@@ -21,7 +21,9 @@ WASM blob and no external fetches:
 | Module | Does |
 |---|---|
 | `src/sqlcipher.js` | SQLCipher 4 decryption using only WebCrypto |
-| `src/sqlite.js` | A minimal read-only SQLite reader — b-trees, records, overflow pages |
+| `src/sqlite.js` | A minimal SQLite reader — b-trees, records, overflow pages |
+| `src/sqlite_write.js` | A SQLite writer — serialises tables and indexes back into a file |
+| `src/editor.js` | Track edits and saving |
 | `src/anlz.js` | ANLZ cues, beatgrid and waveforms |
 | `src/waveform.js` | Canvas rendering |
 | `src/player.js` | Playback and cue stepping |
@@ -78,11 +80,30 @@ and downbeats emphasised, over a static overview strip showing the whole track.
 
 Zoom runs 4s–32s across the deck.
 
+## Editing
+
+Title, artist, album, genre, comment, rating and colour are editable. Changes
+are held as a change-set rather than applied in place, so setting a value back
+to its original removes it from the count rather than recording a no-op, and
+Discard is always exact.
+
+**Download edited database** rebuilds the whole file and re-encrypts it. Copy
+the result over `PIONEER/rekordbox/exportLibrary.db` on the device. Rebuilding
+rather than patching is deliberate: changing a rating from 0 to 5 changes its
+serial type from "constant zero" to "8-bit integer", so the record grows and
+the page has to be laid out again regardless.
+
+The output is verified by `PRAGMA integrity_check` and
+`PRAGMA cipher_integrity_check` in SQLCipher itself, not just by reading it
+back with the same code that wrote it.
+
 ## Limitations
 
 - Reads the `.DAT` and `.EXT` files a track references. Drop the **whole
   device**, not just the database, or there are no waveforms.
-- Read-only.
+- Editing covers database fields only. Cues live in ANLZ and are not editable
+  here.
+- Saving downloads a file; the browser cannot write back to the USB directly.
 - Phrase analysis (`PSSI`) and the 3-band waveform (`PWV4`) are parsed but not
   yet displayed.
 

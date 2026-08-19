@@ -233,3 +233,122 @@ test('position formatting shows tenths', () => {
   assert.equal(fmtPosition(-5), '0:00.0');
   assert.equal(fmtPosition(NaN), '0:00.0');
 });
+
+// -- writing ----------------------------------------------------------------
+
+import { encrypt } from '../src/sqlcipher.js';
+import { writeDatabase, buildRecord, SQLiteWriteError } from '../src/sqlite_write.js';
+import { Editor } from '../src/editor.js';
+
+test('encrypt then decrypt returns the original image', async () => {
+  const plain = await decrypt(raw(), PASS);
+  const round = await decrypt(await encrypt(plain, PASS), PASS);
+  assert.deepEqual(Buffer.from(round), Buffer.from(plain));
+});
+
+test('encryption uses a fresh IV per run, so output differs', async () => {
+  const plain = await decrypt(raw(), PASS);
+  const a = await encrypt(plain, PASS);
+  const b = await encrypt(plain, PASS);
+  assert.notDeepEqual(Buffer.from(a), Buffer.from(b));
+});
+
+test('encrypt rejects a partial page', async () => {
+  await assert.rejects(() => encrypt(new Uint8Array(100), PASS));
+});
+
+test('records encode integers by narrowest serial type', () => {
+  // 0 and 1 are their own serial types and occupy no payload bytes.
+  assert.equal(buildRecord([0]).length, 2);
+  assert.equal(buildRecord([1]).length, 2);
+  assert.equal(buildRecord([5]).length, 3);
+  assert.equal(buildRecord([300]).length, 4);
+});
+
+test('records round-trip through the reader', async () => {
+  const tables = [{
+    name: 't', sql: 'CREATE TABLE t(a integer primary key, b varchar, c integer)',
+    columns: ['a', 'b', 'c'], rowidAlias: 'a',
+    rows: [
+      { __rowid: 1, a: 1, b: 'hello', c: 0 },
+      { __rowid: 2, a: 2, b: 'Кириллица', c: 42 },
+      { __rowid: 3, a: 3, b: null, c: -7 },
+    ],
+  }];
+  const db = new SQLiteDatabase(writeDatabase(tables));
+  const rows = db.select('t');
+  assert.deepEqual(rows.map((r) => r.b), ['hello', 'Кириллица', null]);
+  assert.deepEqual(rows.map((r) => r.c), [0, 42, -7]);
+  assert.deepEqual(rows.map((r) => r.a), [1, 2, 3]);
+});
+
+test('an empty table produces a readable page', async () => {
+  // Regression: writing 0 as the cell-content offset means 65536 in the file
+  // format, which made SQLite report free-space corruption on empty tables.
+  const db = new SQLiteDatabase(writeDatabase([{
+    name: 'empty', sql: 'CREATE TABLE empty(a integer primary key, b varchar)',
+    columns: ['a', 'b'], rowidAlias: 'a', rows: [],
+  }]));
+  assert.deepEqual(db.select('empty'), []);
+});
+
+test('a table spanning many pages round-trips', () => {
+  const rows = Array.from({ length: 400 }, (_, i) => ({
+    __rowid: i + 1, a: i + 1, b: `row ${i} ${'x'.repeat(60)}`,
+  }));
+  const db = new SQLiteDatabase(writeDatabase([{
+    name: 'big', sql: 'CREATE TABLE big(a integer primary key, b varchar)',
+    columns: ['a', 'b'], rowidAlias: 'a', rows,
+  }]));
+  const back = db.select('big');
+  assert.equal(back.length, 400);
+  assert.equal(back[399].b, rows[399].b);
+});
+
+test('an oversized record raises rather than truncating', () => {
+  assert.throws(() => writeDatabase([{
+    name: 'x', sql: 'CREATE TABLE x(a integer primary key, b varchar)',
+    columns: ['a', 'b'], rowidAlias: 'a',
+    rows: [{ __rowid: 1, a: 1, b: 'y'.repeat(9000) }],
+  }]), SQLiteWriteError);
+});
+
+// -- editor -----------------------------------------------------------------
+
+test('an edit back to the original value is not a change', () => {
+  const e = new Editor();
+  e.set(1, 'rating', 4, 0);
+  assert.equal(e.count, 1);
+  e.set(1, 'rating', 0, 0);
+  assert.equal(e.count, 0);
+  assert.equal(e.dirty, false);
+});
+
+test('empty string and null are the same absence', () => {
+  const e = new Editor();
+  e.set(1, 'title', '', null);
+  assert.equal(e.count, 0);
+});
+
+test('changes are counted per field across tracks', () => {
+  const e = new Editor();
+  e.set(1, 'rating', 4, 0);
+  e.set(1, 'title', 'x', 'y');
+  e.set(2, 'rating', 3, 0);
+  assert.equal(e.count, 3);
+  assert.equal(e.changes.size, 2);
+});
+
+test('get falls back to the original until edited', () => {
+  const e = new Editor();
+  assert.equal(e.get(1, 'rating', 5), 5);
+  e.set(1, 'rating', 2, 5);
+  assert.equal(e.get(1, 'rating', 5), 2);
+});
+
+test('clear drops everything', () => {
+  const e = new Editor();
+  e.set(1, 'rating', 4, 0);
+  e.clear();
+  assert.equal(e.dirty, false);
+});
