@@ -352,3 +352,27 @@ test('clear drops everything', () => {
   e.clear();
   assert.equal(e.dirty, false);
 });
+
+// -- build ------------------------------------------------------------------
+
+test('the bundled page parses', async () => {
+  // Regression: concatenating modules put two PAGE_SIZE declarations in one
+  // scope, so the whole script failed to parse and nothing on the page ran.
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const html = readFileSync(join(root, 'dist', 'index.html'), 'utf8');
+  const script = /<script type="module">([\s\S]*?)<\/script>/.exec(html)?.[1];
+  assert.ok(script, 'no inlined script found in dist/index.html');
+  assert.doesNotThrow(() => new Function(script));
+});
+
+test('the bundle exposes the entry point', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const html = readFileSync(join(root, 'dist', 'index.html'), 'utf8');
+  assert.match(html, /__app_js\.init\(\);/);
+});

@@ -1,36 +1,76 @@
 #!/usr/bin/env node
 /**
- * Inline every module into a single self-contained dist/index.html.
+ * Inline every module into a single self-contained page.
  *
- * The viewer is meant to work from a file:// URL and to publish as an
- * Artifact, where a strict CSP blocks any external fetch -- so the shipped
- * page cannot use ES module imports that resolve over the network.
+ * The shipped page must work from a file:// URL and as a published Artifact,
+ * where a strict CSP blocks any external fetch -- so it cannot use ES module
+ * imports that resolve over the network.
+ *
+ * Modules are wrapped in IIFEs rather than concatenated. Concatenation shares
+ * one scope, so two modules that both define `PAGE_SIZE` collide and the whole
+ * script fails to parse -- silently, because nothing on the page runs to report
+ * it. Each module now keeps its own scope and publishes only what it exports.
+ *
+ * The result is syntax-checked before it is written. A bundler that cannot
+ * produce a parsable file must fail the build, not ship one.
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const order = ['sqlcipher.js', 'sqlite.js', 'sqlite_write.js', 'anlz.js', 'waveform.js', 'player.js', 'editor.js', 'app.js'];
 
-const modules = order.map((name) => {
-  const src = readFileSync(join(root, 'src', name), 'utf8');
-  return src
-    .replace(/^import[\s\S]*?from\s+'[^']*';\s*$/gm, '')   // drop intra-bundle imports
-    .replace(/^export\s+(?=(async|const|function|class|let|var))/gm, '');
-});
+/** Dependencies first: a module's IIFE runs before anything that imports it. */
+const order = [
+  'sqlcipher.js', 'sqlite.js', 'sqlite_write.js', 'anlz.js',
+  'waveform.js', 'player.js', 'editor.js', 'app.js',
+];
+
+const nsOf = (name) => '__' + name.replace(/\W/g, '_');
+
+const EXPORT_DECL = /^export\s+(?:async\s+)?(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/gm;
+const IMPORT_LINE = /^import\s*\{([^}]*)\}\s*from\s*'([^']+)';?\s*$/gm;
+
+function transform(name, source) {
+  const exports = [...source.matchAll(EXPORT_DECL)].map((m) => m[1]);
+  if (!exports.length && name !== 'app.js') {
+    throw new Error(`${name} exports nothing — check the export syntax`);
+  }
+
+  let body = source.replace(IMPORT_LINE, (_all, names, from) => {
+    const file = from.replace(/^\.\//, '');
+    if (!order.includes(file)) throw new Error(`${name} imports unknown module ${from}`);
+    const wanted = names.split(',').map((s) => s.trim()).filter(Boolean).join(', ');
+    return `const { ${wanted} } = ${nsOf(file)};`;
+  });
+  body = body.replace(/^export\s+(?=(async|const|let|var|function|class)\b)/gm, '');
+
+  return `const ${nsOf(name)} = (() => {\n${body}\nreturn { ${exports.join(', ')} };\n})();`;
+}
+
+const modules = order.map((name) =>
+  transform(name, readFileSync(join(root, 'src', name), 'utf8'))
+);
+const script = `${modules.join('\n')}\n${nsOf('app.js')}.init();`;
+
+// Fail loudly rather than shipping a page whose script never runs.
+try {
+  new Function(script);
+} catch (err) {
+  console.error(`\nBUILD FAILED — bundled script does not parse:\n  ${err.message}\n`);
+  process.exit(1);
+}
 
 const html = readFileSync(join(root, 'index.html'), 'utf8').replace(
   /<script type="module">[\s\S]*?<\/script>/,
-  `<script type="module">\n${modules.join('\n')}\ninit();\n</script>`
+  `<script type="module">\n${script}\n</script>`
 );
 
 mkdirSync(join(root, 'dist'), { recursive: true });
 writeFileSync(join(root, 'dist', 'index.html'), html);
-console.log(`dist/index.html   ${(html.length / 1024).toFixed(1)} KB`);
+console.log(`dist/index.html    ${(html.length / 1024).toFixed(1)} KB`);
 
-// Artifact variant: the host supplies the document skeleton, so strip the
-// doctype and the meta tags it already provides, keeping <title> for the tab.
+// Artifact variant: the host supplies the document skeleton.
 const artifact = html
   .replace(/^<!doctype html>\s*/i, '')
   .replace(/<meta charset="utf-8">\s*/i, '')
