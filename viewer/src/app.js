@@ -583,7 +583,29 @@ function render() {
 
 // -- wiring ----------------------------------------------------------------
 
+/**
+ * Skin switching.
+ *
+ * Winamp's own identity was skinning, so this ships as a switch rather than a
+ * replacement. The choice persists, and the classic skin commits to its own
+ * dark chassis instead of following the viewer's light/dark theme.
+ */
+function initSkin() {
+  const btn = $('#skin');
+  const apply = (skin) => {
+    document.documentElement.dataset.skin = skin;
+    btn.textContent = skin === 'classic' ? 'Modern skin' : 'Classic skin';
+    try { localStorage.setItem('onelibrary.skin', skin); } catch { /* private mode */ }
+    if (state.selected) selectTrack(state.selected);
+  };
+  let saved = 'modern';
+  try { saved = localStorage.getItem('onelibrary.skin') || 'modern'; } catch { /* ignore */ }
+  apply(saved);
+  btn.onclick = () => apply(document.documentElement.dataset.skin === 'classic' ? 'modern' : 'classic');
+}
+
 export function init() {
+  initSkin();
   const zone = $('#dropzone');
   for (const ev of ['dragenter', 'dragover']) {
     document.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add('over'); });

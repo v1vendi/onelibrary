@@ -97,6 +97,22 @@ The output is verified by `PRAGMA integrity_check` and
 `PRAGMA cipher_integrity_check` in SQLCipher itself, not just by reading it
 back with the same code that wrote it.
 
+## Skins
+
+Winamp's whole identity was skinning, so the classic look ships as a switch
+rather than a replacement — the toggle sits in the header and the choice
+persists.
+
+The classic skin is a **hand-built homage, not a port**. Real Winamp skins are
+bitmap sets owned by Nullsoft and its successors; nothing here is copied from
+them. The bevels, the backlit display and the playlist colours are rebuilt in
+CSS from the era's Win95 3D conventions. It deliberately commits to its own
+dark chassis rather than following the viewer's light/dark theme.
+
+One substantive departure: Winamp's display green was `#00FF00`, which vibrates
+badly against black at small sizes. This uses a slightly desaturated green that
+holds its edge in text while still reading as a phosphor display.
+
 ## Limitations
 
 - Reads the `.DAT` and `.EXT` files a track references. Drop the **whole

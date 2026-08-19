@@ -336,6 +336,189 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   margin-top: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px; color: var(--ink-soft); word-break: break-all;
 }
+
+/* ===========================================================================
+   Skin: classic
+   ---------------------------------------------------------------------------
+   A hand-built homage to the Winamp 2.x chassis, not a port of one. The real
+   skins are bitmap sets owned by Nullsoft and its successors, so nothing here
+   is copied from them: the bevels, the LCD panel and the playlist colours are
+   rebuilt in CSS from the era's Win95 3D conventions.
+
+   The look is a single committed world -- a dark plastic chassis with a
+   backlit display -- so it does not follow the viewer's light/dark theme. Every
+   colour is painted explicitly rather than inherited, which is what lets it sit
+   on either host background.
+
+   The one substantive change is the display green. Winamp's #00FF00 on black
+   is roughly 15.3:1 against black but vibrates badly at small sizes; this uses
+   a slightly desaturated green that holds its edge in text while still reading
+   as a phosphor display.
+   =========================================================================== */
+
+:root[data-skin="classic"] {
+  --chassis:      #3b3b3b;
+  --chassis-dark: #2a2a2a;
+  --bevel-hi:     #6e6e6e;
+  --bevel-lo:     #141414;
+  --display:      #000000;
+  --phosphor:     #21e421;
+  --phosphor-dim: #128812;
+  --select:       #0000c6;
+  --titlebar:     #1b1b2e;
+
+  --ground:   var(--chassis-dark);
+  --panel:    var(--chassis);
+  --sunken:   var(--display);
+  --line:     var(--bevel-lo);
+  --ink:      #d6d6d6;
+  --ink-soft: #9a9a9a;
+  --hot:      #22d3ee;
+  --memory:   #ffa022;
+  --accent:   var(--phosphor);
+  --on-accent:#000000;
+  --star:     var(--phosphor);
+  --ok:       var(--phosphor);
+  --err:      #ff5555;
+  --screen:   #000000;
+  --screen-line: #2a2a2a;
+}
+
+/* Win95 3D edges: light from the top-left, shadow to the bottom-right. */
+:root[data-skin="classic"] .bevel-out,
+:root[data-skin="classic"] header,
+:root[data-skin="classic"] #sidebar,
+:root[data-skin="classic"] #detail {
+  border-top: 1px solid var(--bevel-hi);
+  border-left: 1px solid var(--bevel-hi);
+  border-bottom: 1px solid var(--bevel-lo);
+  border-right: 1px solid var(--bevel-lo);
+  border-radius: 0;
+}
+
+:root[data-skin="classic"] body {
+  background:
+    repeating-linear-gradient(180deg,
+      rgba(255,255,255,.022) 0 1px, transparent 1px 3px),
+    var(--chassis-dark);
+  font-family: ui-monospace, "Lucida Console", Menlo, monospace;
+  font-size: 12px;
+}
+
+/* Title bar: the classic hatched strip either side of a centred name. */
+:root[data-skin="classic"] header {
+  background: var(--titlebar);
+  padding: 6px 10px;
+  gap: 10px;
+}
+:root[data-skin="classic"] header h1 {
+  font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--phosphor); font-weight: 700;
+}
+:root[data-skin="classic"] header h1 b { color: #fff; }
+:root[data-skin="classic"] header .label {
+  color: var(--phosphor-dim); letter-spacing: .1em;
+}
+:root[data-skin="classic"] header .spacer {
+  background: repeating-linear-gradient(180deg,
+    var(--bevel-hi) 0 1px, transparent 1px 3px);
+  height: 12px; min-width: 40px; opacity: .5;
+}
+:root[data-skin="classic"] input[type=text] {
+  background: #000; color: var(--phosphor); border-radius: 0;
+  border: 1px solid var(--bevel-lo); border-top-color: #000;
+  font-family: inherit;
+}
+
+/* Playlist-editor treatment for the track table. */
+:root[data-skin="classic"] #content { background: #000; }
+:root[data-skin="classic"] table { font-family: inherit; font-size: 12px; }
+:root[data-skin="classic"] th {
+  background: var(--chassis); color: #d6d6d6;
+  border-bottom: 1px solid var(--bevel-lo);
+  letter-spacing: .1em;
+}
+:root[data-skin="classic"] td {
+  border-bottom: 0; color: var(--phosphor); padding: 3px 9px;
+}
+:root[data-skin="classic"] tbody tr:hover { background: #0a1f0a; }
+:root[data-skin="classic"] tbody tr.sel { background: var(--select); }
+:root[data-skin="classic"] tbody tr.sel td { color: #fff; }
+:root[data-skin="classic"] .stars { color: var(--phosphor); }
+:root[data-skin="classic"] tbody tr.edited td.title { color: #fff; font-style: normal; }
+
+:root[data-skin="classic"] #sidebar { background: var(--chassis); }
+:root[data-skin="classic"] .device-name { color: var(--phosphor); letter-spacing: .06em; }
+:root[data-skin="classic"] button.nav { border-radius: 0; color: #d6d6d6; }
+:root[data-skin="classic"] button.nav.active { background: var(--select); color: #fff; }
+
+/* The transport: chunky bevelled keys and a backlit time readout. */
+:root[data-skin="classic"] #detail { background: var(--chassis); }
+:root[data-skin="classic"] #detail h2 { color: var(--phosphor); font-size: 14px; }
+:root[data-skin="classic"] canvas.wave { border-radius: 0; border-color: var(--bevel-lo); }
+:root[data-skin="classic"] button.tbtn,
+:root[data-skin="classic"] button.zbtn,
+:root[data-skin="classic"] #savebar button {
+  background: var(--chassis); color: #e0e0e0; border-radius: 0;
+  border-top: 1px solid var(--bevel-hi);
+  border-left: 1px solid var(--bevel-hi);
+  border-bottom: 1px solid var(--bevel-lo);
+  border-right: 1px solid var(--bevel-lo);
+}
+:root[data-skin="classic"] button.tbtn:active,
+:root[data-skin="classic"] button.zbtn:active {
+  border-top-color: var(--bevel-lo); border-left-color: var(--bevel-lo);
+  border-bottom-color: var(--bevel-hi); border-right-color: var(--bevel-hi);
+}
+:root[data-skin="classic"] button.zbtn.on {
+  background: #000; color: var(--phosphor); border-color: var(--bevel-lo);
+}
+:root[data-skin="classic"] .clock {
+  background: #000; color: var(--phosphor);
+  padding: 3px 12px; font-size: 21px; font-weight: 400; letter-spacing: .06em;
+  border-top: 1px solid var(--bevel-lo);
+  border-left: 1px solid var(--bevel-lo);
+  border-bottom: 1px solid var(--bevel-hi);
+  border-right: 1px solid var(--bevel-hi);
+  text-shadow: 0 0 6px rgba(33,228,33,.55);
+}
+:root[data-skin="classic"] .clock-total { color: var(--phosphor-dim); }
+:root[data-skin="classic"] .chip { border-radius: 0; background: #000; }
+:root[data-skin="classic"] input.edit {
+  background: #000; color: var(--phosphor); border-radius: 0;
+  border: 1px solid var(--bevel-lo); font-family: inherit;
+}
+:root[data-skin="classic"] #savebar {
+  background: var(--titlebar); border-bottom-color: var(--bevel-lo);
+}
+:root[data-skin="classic"] #savebar .count { color: var(--phosphor); }
+:root[data-skin="classic"] #savebar .save { background: var(--select); color: #fff; }
+:root[data-skin="classic"] #dropzone {
+  background: var(--chassis); border-radius: 0; border-style: solid;
+  border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
+}
+:root[data-skin="classic"] #dropzone h2 { color: var(--phosphor); }
+:root[data-skin="classic"] label.pick {
+  background: var(--chassis); color: #e0e0e0; border-radius: 0;
+  border-top: 1px solid var(--bevel-hi); border-left: 1px solid var(--bevel-hi);
+  border-bottom: 1px solid var(--bevel-lo); border-right: 1px solid var(--bevel-lo);
+}
+:root[data-skin="classic"] #status { background: #000; color: var(--phosphor); }
+
+/* Skin switch */
+button.skin {
+  font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  padding: 5px 10px; cursor: pointer; border-radius: 6px;
+  background: var(--sunken); color: var(--ink-soft); border: 1px solid var(--line);
+}
+button.skin:hover { color: var(--ink); }
+button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+:root[data-skin="classic"] button.skin {
+  border-radius: 0; background: var(--chassis); color: var(--phosphor);
+  border-top: 1px solid var(--bevel-hi); border-left: 1px solid var(--bevel-hi);
+  border-bottom: 1px solid var(--bevel-lo); border-right: 1px solid var(--bevel-lo);
+}
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 
@@ -344,6 +527,7 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   <span class="label">decrypts rekordbox exports in your browser</span>
   <span class="spacer"></span>
   <input type="text" id="key" placeholder="passphrase (optional)" spellcheck="false" aria-label="SQLCipher passphrase">
+  <button class="skin" id="skin" type="button">Classic skin</button>
 </header>
 <div id="status" hidden></div>
 <div id="savebar" hidden></div>
