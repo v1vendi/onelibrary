@@ -87,24 +87,29 @@ are held as a change-set rather than applied in place, so setting a value back
 to its original removes it from the count rather than recording a no-op, and
 Discard is always exact.
 
-**Save changes** takes one of two routes, because a local copy and the
-published page can do different things:
+**Save changes** takes whichever route the browser allows:
 
-- **Locally** it rebuilds the whole database, re-encrypts it, and downloads
-  `exportLibrary.db`. Copy that over `PIONEER/rekordbox/` on the device.
-  Rebuilding rather than patching is deliberate: changing a rating from 0 to 5
-  changes its serial type from "constant zero" to "8-bit integer", so the
-  record grows and the page has to be laid out again regardless.
+- **Open device…** (Chrome, Edge) grants a writable handle, and saving
+  **overwrites `exportLibrary.db` on the stick in place**. The previous
+  database is kept as `exportLibrary.db.bak` first, and the stale `-wal`/`-shm`
+  sidecars are removed so nothing replays over the new file. Dragging a folder
+  in cannot do this — drag-and-drop yields read-only handles.
+- **Otherwise** it downloads the rebuilt `exportLibrary.db` to copy over
+  `PIONEER/rekordbox/` yourself.
 - **In the published artifact** the download allowlist has no `.db` extension,
-  so it saves `onelibrary-edits.json` instead. Apply it with the Python CLI:
+  so it saves `onelibrary-edits.json` instead:
 
   ```bash
   onelibrary apply onelibrary-edits.json /Volumes/YOURUSB
   ```
 
   The change-set records the value the browser saw alongside the new one, so
-  `apply` refuses any field the device has changed since — pass `--force` to
-  override.
+  `apply` refuses any field the device has changed since — `--force` overrides.
+
+Every route rebuilds the whole database rather than patching bytes. That is
+deliberate: changing a rating from 0 to 5 changes its serial type from
+"constant zero" to "8-bit integer", so the record grows and the page has to be
+laid out again regardless.
 
 The output is verified by `PRAGMA integrity_check` and
 `PRAGMA cipher_integrity_check` in SQLCipher itself, not just by reading it
@@ -132,7 +137,9 @@ holds its edge in text while still reading as a phosphor display.
   device**, not just the database, or there are no waveforms.
 - Editing covers database fields only. Cues live in ANLZ and are not editable
   here.
-- Saving downloads a file; the browser cannot write back to the USB directly.
+- Saving in place needs the File System Access API — Chrome or Edge, and not
+  inside the published artifact's frame. Elsewhere it falls back to a download
+  or a change-set.
 - Phrase analysis (`PSSI`) and the 3-band waveform (`PWV4`) are parsed but not
   yet displayed.
 

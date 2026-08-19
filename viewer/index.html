@@ -195,11 +195,14 @@ tbody tr.edited td.swatch { position: relative; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: .9em; background: var(--sunken); padding: 1px 5px; border-radius: 4px;
 }
-label.pick {
-  display: inline-block; margin-top: 18px; padding: 9px 20px; cursor: pointer;
+.actions { display: flex; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+.pick {
+  display: inline-block; padding: 9px 20px; cursor: pointer; font: inherit;
   background: var(--accent); color: var(--on-accent);
-  border-radius: 8px; font-weight: 600; font-size: 13px;
+  border: 1px solid var(--accent); border-radius: 8px; font-weight: 600; font-size: 13px;
 }
+.pick.alt { background: var(--panel); color: var(--ink); border-color: var(--line); }
+#dropzone .hint { font-size: 12px; margin-top: 10px; }
 label.pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 label.pick input { position: absolute; opacity: 0; width: 0; height: 0; }
 #dropzone .note {
@@ -340,172 +343,223 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 /* ===========================================================================
    Skin: classic
    ---------------------------------------------------------------------------
-   A hand-built homage to the Winamp 2.x chassis, not a port of one. The real
-   skins are bitmap sets owned by Nullsoft and its successors, so nothing here
-   is copied from them: the bevels, the LCD panel and the playlist colours are
-   rebuilt in CSS from the era's Win95 3D conventions.
+   A hand-built homage to the Winamp 2.x windows, not a port of one. Real skins
+   are bitmap sets owned by Nullsoft and its successors, so nothing here is
+   copied from them: the hatched title bars, the bevels and the phosphor
+   playlist are rebuilt in CSS from the era's Win95 3D conventions.
 
-   The look is a single committed world -- a dark plastic chassis with a
-   backlit display -- so it does not follow the viewer's light/dark theme. Every
-   colour is painted explicitly rather than inherited, which is what lets it sit
-   on either host background.
+   Winamp's proportions are the point. Playlist rows are ~13px tall with the
+   track number run into the title and the duration hard right; the display is
+   a black inset panel with oversized green digits; every control is a small
+   bevelled square. It commits to that one world rather than following the
+   viewer's light/dark theme, painting every colour explicitly so it holds on
+   either host ground.
 
-   The one substantive change is the display green. Winamp's #00FF00 on black
-   is roughly 15.3:1 against black but vibrates badly at small sizes; this uses
-   a slightly desaturated green that holds its edge in text while still reading
-   as a phosphor display.
+   One departure: Winamp's #00FF00 vibrates against black at text sizes, so the
+   phosphor here is very slightly pulled back.
    =========================================================================== */
 
 :root[data-skin="classic"] {
-  --chassis:      #3b3b3b;
-  --chassis-dark: #2a2a2a;
-  --bevel-hi:     #6e6e6e;
-  --bevel-lo:     #141414;
-  --display:      #000000;
-  --phosphor:     #21e421;
-  --phosphor-dim: #128812;
-  --select:       #0000c6;
-  --titlebar:     #1b1b2e;
+  --chassis:      #3f3f46;
+  --chassis-dark: #26262c;
+  --bevel-hi:     #7c7c88;
+  --bevel-lo:     #101014;
+  --phosphor:     #24e02c;
+  --phosphor-dim: #0f8a17;
+  --select:       #0f1d8c;
+  --titlebar:     #21212c;
 
   --ground:   var(--chassis-dark);
   --panel:    var(--chassis);
-  --sunken:   var(--display);
+  --sunken:   #000000;
   --line:     var(--bevel-lo);
-  --ink:      #d6d6d6;
-  --ink-soft: #9a9a9a;
+  --ink:      #d2d2d8;
+  --ink-soft: #8f8f9c;
   --hot:      #22d3ee;
   --memory:   #ffa022;
   --accent:   var(--phosphor);
   --on-accent:#000000;
   --star:     var(--phosphor);
   --ok:       var(--phosphor);
-  --err:      #ff5555;
+  --err:      #ff6161;
   --screen:   #000000;
-  --screen-line: #2a2a2a;
-}
-
-/* Win95 3D edges: light from the top-left, shadow to the bottom-right. */
-:root[data-skin="classic"] .bevel-out,
-:root[data-skin="classic"] header,
-:root[data-skin="classic"] #sidebar,
-:root[data-skin="classic"] #detail {
-  border-top: 1px solid var(--bevel-hi);
-  border-left: 1px solid var(--bevel-hi);
-  border-bottom: 1px solid var(--bevel-lo);
-  border-right: 1px solid var(--bevel-lo);
-  border-radius: 0;
+  --screen-line: #2a2a32;
 }
 
 :root[data-skin="classic"] body {
-  background:
-    repeating-linear-gradient(180deg,
-      rgba(255,255,255,.022) 0 1px, transparent 1px 3px),
-    var(--chassis-dark);
-  font-family: ui-monospace, "Lucida Console", Menlo, monospace;
-  font-size: 12px;
+  background: var(--chassis-dark);
+  color: var(--ink);
+  font-family: ui-monospace, "Lucida Console", "Courier New", monospace;
+  font-size: 11px;
 }
 
-/* Title bar: the classic hatched strip either side of a centred name. */
-:root[data-skin="classic"] header {
-  background: var(--titlebar);
-  padding: 6px 10px;
-  gap: 10px;
-}
-:root[data-skin="classic"] header h1 {
-  font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
-  color: var(--phosphor); font-weight: 700;
-}
-:root[data-skin="classic"] header h1 b { color: #fff; }
-:root[data-skin="classic"] header .label {
-  color: var(--phosphor-dim); letter-spacing: .1em;
-}
-:root[data-skin="classic"] header .spacer {
-  background: repeating-linear-gradient(180deg,
-    var(--bevel-hi) 0 1px, transparent 1px 3px);
-  height: 12px; min-width: 40px; opacity: .5;
-}
-:root[data-skin="classic"] input[type=text] {
-  background: #000; color: var(--phosphor); border-radius: 0;
-  border: 1px solid var(--bevel-lo); border-top-color: #000;
-  font-family: inherit;
-}
-
-/* Playlist-editor treatment for the track table. */
-:root[data-skin="classic"] #content { background: #000; }
-:root[data-skin="classic"] table { font-family: inherit; font-size: 12px; }
-:root[data-skin="classic"] th {
-  background: var(--chassis); color: #d6d6d6;
-  border-bottom: 1px solid var(--bevel-lo);
-  letter-spacing: .1em;
-}
-:root[data-skin="classic"] td {
-  border-bottom: 0; color: var(--phosphor); padding: 3px 9px;
-}
-:root[data-skin="classic"] tbody tr:hover { background: #0a1f0a; }
-:root[data-skin="classic"] tbody tr.sel { background: var(--select); }
-:root[data-skin="classic"] tbody tr.sel td { color: #fff; }
-:root[data-skin="classic"] .stars { color: var(--phosphor); }
-:root[data-skin="classic"] tbody tr.edited td.title { color: #fff; font-style: normal; }
-
-:root[data-skin="classic"] #sidebar { background: var(--chassis); }
-:root[data-skin="classic"] .device-name { color: var(--phosphor); letter-spacing: .06em; }
-:root[data-skin="classic"] button.nav { border-radius: 0; color: #d6d6d6; }
-:root[data-skin="classic"] button.nav.active { background: var(--select); color: #fff; }
-
-/* The transport: chunky bevelled keys and a backlit time readout. */
-:root[data-skin="classic"] #detail { background: var(--chassis); }
-:root[data-skin="classic"] #detail h2 { color: var(--phosphor); font-size: 14px; }
-:root[data-skin="classic"] canvas.wave { border-radius: 0; border-color: var(--bevel-lo); }
+/* Raised and inset edges, the Win95 way. */
+:root[data-skin="classic"] header,
+:root[data-skin="classic"] #sidebar,
+:root[data-skin="classic"] #detail,
+:root[data-skin="classic"] #dropzone,
+:root[data-skin="classic"] .pick,
 :root[data-skin="classic"] button.tbtn,
 :root[data-skin="classic"] button.zbtn,
+:root[data-skin="classic"] button.skin,
 :root[data-skin="classic"] #savebar button {
-  background: var(--chassis); color: #e0e0e0; border-radius: 0;
-  border-top: 1px solid var(--bevel-hi);
-  border-left: 1px solid var(--bevel-hi);
-  border-bottom: 1px solid var(--bevel-lo);
-  border-right: 1px solid var(--bevel-lo);
+  border-radius: 0;
+  border-style: solid; border-width: 1px;
+  border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
+}
+:root[data-skin="classic"] #content,
+:root[data-skin="classic"] canvas.wave,
+:root[data-skin="classic"] .clock,
+:root[data-skin="classic"] input[type=text],
+:root[data-skin="classic"] input.edit {
+  border-radius: 0;
+  border-style: solid; border-width: 1px;
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+}
+
+/* --- title bars ----------------------------------------------------------- */
+/* Winamp centres a small caps name between two blocks of fine hatching. */
+
+:root[data-skin="classic"] header {
+  background: var(--titlebar);
+  padding: 3px 6px;
+  gap: 8px;
+  min-height: 22px;
+}
+:root[data-skin="classic"] header h1 {
+  font-size: 10px; letter-spacing: .28em; text-transform: uppercase;
+  color: var(--phosphor); font-weight: 700; white-space: nowrap;
+}
+:root[data-skin="classic"] header h1 b { color: var(--phosphor); }
+:root[data-skin="classic"] header .label { display: none; }
+:root[data-skin="classic"] header .spacer,
+:root[data-skin="classic"] .hatch {
+  flex: 1; min-width: 24px; height: 9px;
+  background: repeating-linear-gradient(
+    180deg, var(--bevel-hi) 0 1px, transparent 1px 2px);
+  opacity: .55;
+}
+
+:root[data-skin="classic"] input[type=text] {
+  background: #000; color: var(--phosphor); font-family: inherit;
+  font-size: 10px; padding: 3px 6px; width: 150px;
+}
+:root[data-skin="classic"] button.skin {
+  background: var(--chassis); color: var(--phosphor);
+  font-size: 9px; padding: 3px 7px; letter-spacing: .1em;
+}
+
+/* --- the playlist --------------------------------------------------------- */
+
+:root[data-skin="classic"] #main { grid-template-columns: 190px 1fr; }
+:root[data-skin="classic"] #sidebar { background: var(--chassis); padding: 6px 5px; gap: 1px; }
+:root[data-skin="classic"] .device { padding: 2px 5px 8px; }
+:root[data-skin="classic"] .device-name {
+  color: var(--phosphor); font-size: 11px; letter-spacing: .05em;
+}
+:root[data-skin="classic"] .device-meta { color: var(--ink-soft); font-size: 10px; }
+:root[data-skin="classic"] .sec-title { padding: 6px 5px 2px; font-size: 9px; }
+:root[data-skin="classic"] button.nav {
+  border-radius: 0; color: var(--ink); font-size: 11px; padding: 3px 6px;
+}
+:root[data-skin="classic"] button.nav.active { background: var(--select); color: #fff; }
+:root[data-skin="classic"] button.nav .n { color: inherit; }
+
+:root[data-skin="classic"] #content { background: #000; padding: 0; margin: 0; }
+:root[data-skin="classic"] table { font-family: inherit; font-size: 11px; }
+:root[data-skin="classic"] thead { display: none; }
+:root[data-skin="classic"] #list tbody { counter-reset: track; }
+:root[data-skin="classic"] td {
+  border-bottom: 0; color: var(--phosphor);
+  padding: 1px 6px; line-height: 1.35; white-space: nowrap;
+}
+/* Winamp numbers every entry and runs the number into the title. */
+:root[data-skin="classic"] td.title::before {
+  counter-increment: track;
+  content: counter(track) ". ";
+  color: var(--phosphor);
+}
+:root[data-skin="classic"] td.title { max-width: none; font-weight: 400; }
+:root[data-skin="classic"] td.artist { color: var(--phosphor); }
+:root[data-skin="classic"] td.swatch { width: 12px; padding-left: 4px; }
+:root[data-skin="classic"] .dot { width: 6px; height: 6px; }
+:root[data-skin="classic"] tbody tr:hover { background: #071807; }
+:root[data-skin="classic"] tbody tr.sel { background: var(--select); }
+:root[data-skin="classic"] tbody tr.sel td,
+:root[data-skin="classic"] tbody tr.sel td.title::before { color: #fff; }
+:root[data-skin="classic"] .stars { color: var(--phosphor); font-size: 9px; }
+:root[data-skin="classic"] tbody tr.edited td.title { color: #fff; font-style: normal; }
+
+/* --- the player window ---------------------------------------------------- */
+
+:root[data-skin="classic"] #detail { background: var(--chassis); padding: 8px; }
+:root[data-skin="classic"] #detail h2 {
+  color: var(--phosphor); font-size: 12px; font-weight: 400; letter-spacing: .02em;
+}
+:root[data-skin="classic"] #detail .meta,
+:root[data-skin="classic"] #detail .meta .v { color: var(--phosphor-dim); font-size: 10px; }
+:root[data-skin="classic"] #detail .meta .v { color: var(--phosphor); }
+:root[data-skin="classic"] canvas.wave { border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); }
+
+/* The time readout: oversized digits on a black inset, as on the main window. */
+:root[data-skin="classic"] .clock {
+  background: #000; color: var(--phosphor);
+  padding: 1px 10px; font-size: 26px; font-weight: 400;
+  letter-spacing: .04em; line-height: 1.15;
+}
+:root[data-skin="classic"] .clock-total { color: var(--phosphor-dim); font-size: 10px; }
+:root[data-skin="classic"] .transport { gap: 4px; margin-top: 8px; }
+:root[data-skin="classic"] button.tbtn {
+  background: var(--chassis); color: var(--ink);
+  min-width: 26px; height: 24px; padding: 0 5px; font-size: 11px;
 }
 :root[data-skin="classic"] button.tbtn:active,
 :root[data-skin="classic"] button.zbtn:active {
-  border-top-color: var(--bevel-lo); border-left-color: var(--bevel-lo);
-  border-bottom-color: var(--bevel-hi); border-right-color: var(--bevel-hi);
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+}
+:root[data-skin="classic"] button.zbtn {
+  background: var(--chassis); color: var(--ink); font-size: 9px; padding: 3px 6px;
 }
 :root[data-skin="classic"] button.zbtn.on {
-  background: #000; color: var(--phosphor); border-color: var(--bevel-lo);
-}
-:root[data-skin="classic"] .clock {
   background: #000; color: var(--phosphor);
-  padding: 3px 12px; font-size: 21px; font-weight: 400; letter-spacing: .06em;
-  border-top: 1px solid var(--bevel-lo);
-  border-left: 1px solid var(--bevel-lo);
-  border-bottom: 1px solid var(--bevel-hi);
-  border-right: 1px solid var(--bevel-hi);
-  text-shadow: 0 0 6px rgba(33,228,33,.55);
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
 }
-:root[data-skin="classic"] .clock-total { color: var(--phosphor-dim); }
-:root[data-skin="classic"] .chip { border-radius: 0; background: #000; }
+:root[data-skin="classic"] .chip {
+  border-radius: 0; background: #000; font-size: 9px; padding: 2px 6px;
+  border-color: var(--bevel-lo);
+}
+:root[data-skin="classic"] .editor { gap: 3px 8px; grid-template-columns: 70px 1fr; }
+:root[data-skin="classic"] .editor .label { font-size: 9px; }
 :root[data-skin="classic"] input.edit {
-  background: #000; color: var(--phosphor); border-radius: 0;
-  border: 1px solid var(--bevel-lo); font-family: inherit;
+  background: #000; color: var(--phosphor); font-family: inherit;
+  font-size: 11px; padding: 2px 5px;
 }
-:root[data-skin="classic"] #savebar {
-  background: var(--titlebar); border-bottom-color: var(--bevel-lo);
-}
-:root[data-skin="classic"] #savebar .count { color: var(--phosphor); }
-:root[data-skin="classic"] #savebar .save { background: var(--select); color: #fff; }
-:root[data-skin="classic"] #dropzone {
-  background: var(--chassis); border-radius: 0; border-style: solid;
-  border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
-}
-:root[data-skin="classic"] #dropzone h2 { color: var(--phosphor); }
-:root[data-skin="classic"] label.pick {
-  background: var(--chassis); color: #e0e0e0; border-radius: 0;
-  border-top: 1px solid var(--bevel-hi); border-left: 1px solid var(--bevel-hi);
-  border-bottom: 1px solid var(--bevel-lo); border-right: 1px solid var(--bevel-lo);
-}
-:root[data-skin="classic"] #status { background: #000; color: var(--phosphor); }
+:root[data-skin="classic"] button.star { font-size: 14px; color: var(--bevel-hi); }
+:root[data-skin="classic"] button.star.on { color: var(--phosphor); }
+:root[data-skin="classic"] .path { color: var(--phosphor-dim); font-size: 9px; }
 
-/* Skin switch */
+/* --- bars ----------------------------------------------------------------- */
+
+:root[data-skin="classic"] #savebar {
+  background: var(--titlebar); border-bottom-color: var(--bevel-lo); padding: 5px 8px;
+}
+:root[data-skin="classic"] #savebar .count { color: var(--phosphor); font-size: 10px; }
+:root[data-skin="classic"] #savebar button {
+  background: var(--chassis); color: var(--ink); font-size: 10px; padding: 4px 10px;
+}
+:root[data-skin="classic"] #savebar .save { color: var(--phosphor); }
+:root[data-skin="classic"] #status { background: #000; color: var(--phosphor); font-size: 10px; }
+:root[data-skin="classic"] #dropzone { background: var(--chassis); }
+:root[data-skin="classic"] #dropzone h2 {
+  color: var(--phosphor); font-size: 14px; letter-spacing: .12em; text-transform: uppercase;
+}
+:root[data-skin="classic"] #dropzone p { color: var(--ink); font-size: 11px; }
+:root[data-skin="classic"] .pick {
+  background: var(--chassis); color: var(--ink); font-size: 10px;
+  letter-spacing: .1em; text-transform: uppercase; font-weight: 400;
+}
+
+/* Skin switch, in the modern skin */
 button.skin {
   font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
   padding: 5px 10px; cursor: pointer; border-radius: 6px;
@@ -513,16 +567,12 @@ button.skin {
 }
 button.skin:hover { color: var(--ink); }
 button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-:root[data-skin="classic"] button.skin {
-  border-radius: 0; background: var(--chassis); color: var(--phosphor);
-  border-top: 1px solid var(--bevel-hi); border-left: 1px solid var(--bevel-hi);
-  border-bottom: 1px solid var(--bevel-lo); border-right: 1px solid var(--bevel-lo);
-}
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 
 <header>
+  <span class="hatch" aria-hidden="true"></span>
   <h1>One<b>Library</b> Viewer</h1>
   <span class="label">decrypts rekordbox exports in your browser</span>
   <span class="spacer"></span>
@@ -536,10 +586,15 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   <h2>Drop a rekordbox device here</h2>
   <p>Drag a USB stick or SD card onto this page to browse its tracks, playlists, cues and waveforms.</p>
   <p>Dropping just <code>exportLibrary.db</code> works too, but without the analysis files there are no waveforms.</p>
-  <label class="pick">
-    Choose a folder
-    <input type="file" id="picker" webkitdirectory directory multiple>
-  </label>
+  <div class="actions">
+    <button class="pick" id="open" type="button">Open device…</button>
+    <label class="pick alt">
+      Browse read-only
+      <input type="file" id="picker" webkitdirectory directory multiple>
+    </label>
+  </div>
+  <p class="hint">Opening the device lets edits be saved back to it in place.
+    Chrome and Edge only.</p>
   <p class="note">
     Nothing is uploaded. The database is decrypted here in the page using
     WebCrypto, and never leaves this machine.
