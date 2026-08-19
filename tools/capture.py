@@ -71,6 +71,38 @@ def jsonable(v):
     return v
 
 
+def stage_database(db_path: Path, workdir: Path) -> Path:
+    """Copy the database *and its WAL* somewhere writable, then checkpoint.
+
+    rekordbox leaves most of a fresh export sitting in ``exportLibrary.db-wal``
+    -- in one observed capture the main file held 118 KB against a 1.1 MB WAL.
+    A read-only open of the main file alone silently reports a nearly empty
+    database, so the sidecars must be copied together and folded in before
+    anything is read.
+    """
+    import shutil
+
+    import sqlcipher3
+
+    from onelibrary.keys import resolve_key
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    staged = workdir / db_path.name
+    for suffix in ("", "-wal", "-shm"):
+        src = db_path.with_name(db_path.name + suffix)
+        if src.exists():
+            shutil.copy2(src, workdir / src.name)
+
+    if (workdir / (db_path.name + "-wal")).exists():
+        key = resolve_key(validate_against=staged)
+        conn = sqlcipher3.connect(str(staged))
+        conn.execute("PRAGMA key = '" + key.replace("'", "''") + "'")
+        busy, logged, moved = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        conn.close()
+        print(f"    WAL checkpointed (busy={busy}, frames={logged}, moved={moved})")
+    return staged
+
+
 def capture(device: Path, out: Path, key: str | None = None) -> None:
     out.mkdir(parents=True, exist_ok=True)
     db_path = device / EXPORT_DB_RELPATH if device.is_dir() else device
@@ -85,8 +117,9 @@ def capture(device: Path, out: Path, key: str | None = None) -> None:
         print("    Is this a OneLibrary device? Legacy exports have export.pdb instead.")
         return
 
-    print(f"[*] opening {db_path}")
-    db = OneLibraryDB(db_path, key)
+    print(f"[*] staging {db_path}")
+    staged = stage_database(db_path, out / ".staged")
+    db = OneLibraryDB(staged, key)
     (out / "schema.sql").write_text(db.schema_sql())
 
     tdir = out / "tables"

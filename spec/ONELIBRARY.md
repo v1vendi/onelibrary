@@ -90,11 +90,14 @@ binding. **[REPORTED]**
 | Database | Passphrase | Status |
 |---|---|---|
 | `master.db` | `402fd482c38817c35ffa8ffb8c7d93143b749e7d315df7a81732a1ff43608497` | **[VERIFIED]** opens the local database |
-| `exportLibrary.db` | `r8gddnr4k847830ar6cqzbkk0el6qytmb3trbbx805jm74vez64i5o8fnrqryqls` | **[REPORTED]** — no export captured yet |
+| `exportLibrary.db` | `r8gddnr4k847830ar6cqzbkk0el6qytmb3trbbx805jm74vez64i5o8fnrqryqls` | **[VERIFIED]** opens a real rekordbox 7 export |
 
 Both are 64 characters. `master.db`'s is hex-shaped but is *not* used as hex;
 `exportLibrary.db`'s contains non-hex letters, so it cannot be, which is
 consistent with both being plain passphrases.
+
+The two are **not** interchangeable: the `master.db` passphrase fails on an
+export with `file is not a database`, and vice versa. **[VERIFIED]**
 
 The passphrase is reported to be neither licence- nor machine-dependent — the
 same value across all installations. **[REPORTED]**
@@ -129,40 +132,120 @@ sites in `libsqlcipher.0.dylib`'s callers. **[UNKNOWN]**
 
 ## 4. Schema
 
-**Not yet recovered.** A capture of a real export is required.
+**Recovered in full.** 22 tables, 4 indexes, no views or triggers. The
+complete DDL is committed verbatim at [`schema.sql`](schema.sql), and modelled
+in `src/onelibrary/schema.py`. **[VERIFIED]** — introspected from an export
+written by the reference build.
 
-The schema is **not** embedded as SQL text in the binary. Beyond the absence of
-plaintext `CREATE TABLE` statements for export tables, an exhaustive
-single-byte-XOR search for the markers `CREATE TABLE`, `exportLibrary`,
-`PRAGMA key`, `cipher_`, and `sqlite3_key` across all 255 keys returned no hits
-anywhere in the 264 MB image. The schema is therefore constructed at runtime —
-via an ORM or migration path — and can only be recovered by introspecting an
-actual `exportLibrary.db`. **[VERIFIED]** — negative.
+Declared types are only `integer` and `varchar`. **The schema declares no
+NOT NULL, no DEFAULT, and no FOREIGN KEY constraints anywhere.** All
+relationships below are inferred from naming and confirmed against data; none
+are enforced by the database. **[VERIFIED]**
 
-### 4.1 Tables reported by prior art
+### 4.1 Reading an export: the WAL trap
 
-`onelibrary-connect` (MIT) exposes an API implying these entities. Column
-names and types are unconfirmed here. **[REPORTED]**
+rekordbox leaves most of a fresh export in the write-ahead log. One observed
+export was a 118 KB `exportLibrary.db` beside a **1.1 MB**
+`exportLibrary.db-wal`. Opening the main file alone reports a nearly empty
+library — 26 schema objects and almost no rows — with no error.
 
-- **content** — tracks, keyed by `content_id`, with foreign keys to artist,
-  album, genre, key, colour, label, artwork, remixer, original artist, composer
-- **cue** — cue points, loops, hot cues and hot loops in one table
-- **playlist** — folder/playlist tree, plus an ordered join table
-- **myTag** — tag tree with per-track assignments
-- **history** — one session per DJ set, plus ordered contents
-- **hotCueBankList** — hot cue bank lists and their cue members
-- **menuItem** — browse menu configuration, visible categories, sort options
-- **property** — device row carrying `deviceName`, `dbVersion`,
-  `numberOfContents`, `createdDate`, `backgroundColorType`
+Any reader must copy `exportLibrary.db`, `-wal` and `-shm` together and
+checkpoint before reading. **[VERIFIED]**
 
-Note that rekordbox's own `master.db` schema contains deliberate misspellings
-(`djmdColor.Commnt`); do not assume clean naming in the export schema either.
+### 4.2 Tables
 
-### 4.2 Field semantics
+| Table | Rows in test export | Purpose |
+|---|---|---|
+| `content` | 11 | tracks |
+| `cue` | 0 | cue points, hot cues, loops |
+| `artist`, `album`, `genre`, `label`, `key`, `color`, `image` | 14/11/9/10/7/8/11 | lookups |
+| `playlist`, `playlist_content` | 1 / 11 | playlist tree + ordered membership |
+| `myTag`, `myTag_content` | 28 / 1 | tag tree + assignments |
+| `history`, `history_content` | 0 | player-written set history |
+| `hotCueBankList`, `hotCueBankList_cue` | 0 | hot cue banks |
+| `menuItem`, `category`, `sort` | 27 / 22 / 17 | browse UI configuration |
+| `property` | 1 | device descriptor |
+| `recommendedLike` | 0 | track similarity |
 
-**[UNKNOWN]** across the board — enum values, packed blob layouts, tempo and
-position units, colour codes, rating scale. These are what the differential
-method in §5 exists to resolve.
+Lookup tables hold **only the values referenced by exported tracks**, not a
+full enumeration — an export of 11 tracks yielded 7 keys and 9 genres. `color`
+is the exception: all eight are always present. **[VERIFIED]**
+
+### 4.3 Verified field semantics
+
+| Field | Meaning |
+|---|---|
+| `content.bpmx100` | centi-BPM — `12400` is 124.00 BPM |
+| `content.length` | duration in whole seconds |
+| `content.rating` | 0–5 stars, **not** the 0/51/…/255 encoding used elsewhere in the rekordbox ecosystem |
+| `content.path` | device-relative POSIX path, e.g. `/Contents/Artist/Album/Track.mp3` |
+| `content.masterContentId` | `djmdContent.ID` in the source `master.db` |
+| `content.masterDbId` | identifies the source library; constant across one export |
+| `content.analysisDataFilePath` | device-relative path to the ANLZ `.DAT` |
+| `color` | 1 Pink, 2 Red, 3 Orange, 4 Yellow, 5 Green, 6 Aqua, 7 Blue, 8 Dark |
+| `property.dbVersion` | `"1000"` in rekordbox 7 exports |
+| `*_content.sequenceNo` | 1-based ordering within the parent |
+
+The `masterContentId` linkage was confirmed by resolving all 11 rows of a test
+export against the source `master.db`: titles, ratings and BPM matched on every
+row. **[VERIFIED]**
+
+Four tree tables — `playlist`, `hotCueBankList`, `history`, `myTag` — share one
+shape: an `attribute` discriminator, a self-referential `*_id_parent`, and
+`sequenceNo` for sibling order. `attribute` presumably separates folders from
+leaves; exact values **[UNKNOWN]**.
+
+`myTag` IDs are large and library-scoped (e.g. `1478790622`) rather than
+1-based like every other table, and `property.myTagMasterDBID` scopes them.
+**[VERIFIED]**
+
+### 4.4 Reproduce rekordbox's typos
+
+A writer must emit these exactly as rekordbox declares them:
+
+- `album.isComplation` — rekordbox's spelling of "isCompilation"
+- `cue.OutFileOffsetInBlock` — capital `O`, where every sibling field uses
+  lowercase `out`
+
+This is consistent with `master.db`, which has its own (`djmdColor.Commnt`).
+**[VERIFIED]**
+
+### 4.5 Cue positions are stored eleven times over
+
+A single cue records its position in every one of these units:
+
+`inUsec`, `in150FramePerSec`, `inMpegFrameNumber`, `inMpegAbs`,
+`inDecodingStartFramePosition`, `inFileOffsetInBlock`,
+`inNumberOfSampleInBlock` — each with an `out*` counterpart for loops.
+
+The redundancy lets a player seek frame-accurately in any supported container
+without re-parsing the file: microseconds for display, 150 fps CD frames, MPEG
+frame numbers, and byte offsets into the decoded stream. A writer must keep
+them mutually consistent. **[UNKNOWN]** which fields players actually read, and
+**[UNKNOWN]** the `kind` enum separating memory cues, hot cues and loops —
+resolving these needs the differential sequence in §5.
+
+### 4.6 Relationship to ANLZ
+
+**Beatgrids and waveforms are not in the database.** `content` carries no
+beatgrid, waveform, or phrase column; `analysisDataFilePath` points at
+`/PIONEER/USBANLZ/<P0xx>/<8-hex>/ANLZ0000.DAT`, with the `.EXT` sibling beside
+it. **[VERIFIED]**
+
+The ANLZ files are the *same* format the legacy PDB export uses, and parse with
+existing tooling. Tags observed across a full export:
+
+| File | Tags |
+|---|---|
+| `.DAT` | `PPTH` path, `PVBR` VBR index, `PQTZ` beatgrid, `PWAV`/`PWV2` waveforms, `PCOB` ×2 cue lists |
+| `.EXT` | `PPTH`, `PWV3`/`PWV4`/`PWV5` colour waveforms, `PCOB` ×2, `PCO2` ×2 extended cues, `PQT2` extended beatgrid, `PSSI` phrase/song structure |
+
+In an export whose tracks carry no cues, `PCOB` is 24 bytes and `PCO2` is 20 —
+header-only — matching the empty `cue` table. The two representations agree.
+**[VERIFIED]**
+
+A complete writer must therefore emit ANLZ files as well as the database.
+crate-digger and pyrekordbox already document this format; reuse them.
 
 ## 5. Method
 
