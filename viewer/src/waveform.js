@@ -5,6 +5,8 @@
  * stays sharp on retina displays without the caller thinking about it.
  */
 
+import { peakBetween } from './envelope.js';
+
 /** rekordbox's eight track colours, matching the `color` table by id. */
 export const TRACK_COLORS = {
   1: '#f0f', 2: '#f33', 3: '#f93', 4: '#fd3',
@@ -14,6 +16,49 @@ export const TRACK_COLORS = {
 const HOT_CUE_COLOR = '#00c8ff';
 const MEMORY_CUE_COLOR = '#ff9500';
 const LOOP_FILL = 'rgba(0, 200, 255, 0.18)';
+
+/**
+ * One column's band mix, taken from the ANLZ data nearest a source index.
+ *
+ * The envelope supplies the shape; this only supplies the colour split, so a
+ * single representative column is enough.
+ */
+function binAt(cols, index, step) {
+  const i = Math.max(0, Math.min(cols.length - 1, Math.round(index)));
+  return binColumns(cols, i, Math.min(i + step, cols.length), step)[0]
+    ?? { height: 0, low: 0, mid: 0, high: 0 };
+}
+
+/**
+ * Draw one stroke as an envelope with the bands nested inside it.
+ *
+ * Each band occupies a fraction of the same outline rather than having its own
+ * height, so low/mid/high read as a split of one shape. Highs sit innermost
+ * because they are the narrowest and would otherwise be buried.
+ */
+function drawNested(ctx, x, width, mid, amp, lo, hi, bin, colour) {
+  const top = mid - shape(Math.abs(hi)) * amp;
+  const bottom = mid + shape(Math.abs(lo)) * amp;
+  if (bottom - top < 1) { ctx.fillStyle = colour ? BAND_LOW : MONO; ctx.fillRect(x, mid, width, 1); return; }
+
+  if (!colour) {
+    ctx.fillStyle = MONO;
+    ctx.fillRect(x, top, width, bottom - top);
+    return;
+  }
+  const sum = bin.low + bin.mid + bin.high || 1;
+  const fractions = [
+    [BAND_LOW, 1],
+    [BAND_MID, (bin.mid + bin.high) / sum],
+    [BAND_HIGH, bin.high / sum],
+  ];
+  for (const [fill, fraction] of fractions) {
+    const t = mid - (mid - top) * fraction;
+    const b = mid + (bottom - mid) * fraction;
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, t, width, Math.max(1, b - t));
+  }
+}
 
 /** Size a canvas for CSS-pixel drawing at device resolution, and clear it. */
 function prepare(canvas) {
@@ -131,12 +176,6 @@ function drawBands(ctx, x, width, mid, amp, bin, colour) {
 /**
  * The whole track at a glance, with a playhead.
  *
- * This is the overview strip: it never scrolls, so a click maps linearly to a
- * position and the player can be scrubbed by dragging across it.
- */
-/**
- * The whole track at a glance, with a playhead.
- *
  * Drawn the way rekordbox draws its overview, which differs from the scrolling
  * view in three ways:
  *
@@ -217,7 +256,7 @@ export function drawOverview(canvas, waveform, cues, durationMs, positionMs) {
  *
  * @param {number} windowMs how much time fits across the canvas
  */
-export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs, windowMs = 8000) {
+export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs, windowMs = 8000, envelope = null) {
   const { ctx, w, h } = prepare(canvas);
   const cols = waveform?.columns || [];
   if (!cols.length || !durationMs) return;
@@ -265,11 +304,26 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
 
   // Bins are anchored to source columns, so the shape stays fixed and only its
   // screen position moves -- the waveform glides instead of boiling.
-  for (const bin of binColumns(cols, fromCol, Math.min(toCol, cols.length), step)) {
-    if (bin.index < 0) continue;
-    const x = (bin.index / colsPerMs - startMs) / windowMs * w;
-    if (x < -barW || x > w) continue;
-    drawBands(ctx, x, strokeW, mid, amp, bin, colour);
+  if (envelope) {
+    // With decoded audio available the shape comes from a real min/max envelope
+    // and the bands are nested inside it, rather than three separate heights.
+    // One outline shared by all three is what gives the waveform its continuous
+    // form instead of a picket fence.
+    const msPerStroke = (windowMs / w) * (barW || 1);
+    for (let x = 0; x < w; x += barW) {
+      const t0 = startMs + (x / w) * windowMs;
+      if (t0 < 0 || t0 > durationMs) continue;
+      const { min: lo, max: hi } = peakBetween(envelope, t0, t0 + msPerStroke);
+      const bin = binAt(cols, t0 * colsPerMs, step);
+      drawNested(ctx, x, strokeW, mid, amp, lo, hi, bin, colour);
+    }
+  } else {
+    for (const bin of binColumns(cols, fromCol, Math.min(toCol, cols.length), step)) {
+      if (bin.index < 0) continue;
+      const x = (bin.index / colsPerMs - startMs) / windowMs * w;
+      if (x < -barW || x > w) continue;
+      drawBands(ctx, x, strokeW, mid, amp, bin, colour);
+    }
   }
 
   for (const c of cues) {

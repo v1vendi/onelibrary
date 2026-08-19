@@ -314,7 +314,7 @@ async function loadDeck(id, track) {
   if (!track) return;
   const deck = decks[id];
   const anlz = await anlzFor(track);
-  const hasAudio = deck.load({
+  const hasAudio = await deck.load({
     track,
     anlz,
     audioFile: deviceFile(track.path),
@@ -507,7 +507,8 @@ function renderDeck(deck, lanes = null) {
   // -- redraw wiring -----------------------------------------------------
   const redraw = () => {
     drawDetail(detail, deck.anlz?.waveform, deck.cues, deck.anlz?.beats ?? [],
-               deck.durationMs, deck.player.positionMs, state.zoomMs);
+               deck.durationMs, deck.player.positionMs, state.zoomMs,
+               deck.player.envelope);
     drawOverview(overview, deck.anlz?.waveform, deck.cues,
                  deck.durationMs, deck.player.positionMs);
     elapsed.textContent = fmtPosition(deck.player.positionMs);

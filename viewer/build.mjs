@@ -22,7 +22,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 
 /** Dependencies first: a module's IIFE runs before anything that imports it. */
 const order = [
-  'sqlcipher.js', 'sqlite.js', 'sqlite_write.js', 'anlz.js',
+  'sqlcipher.js', 'sqlite.js', 'sqlite_write.js', 'anlz.js', 'envelope.js',
   'waveform.js', 'player.js', 'deck.js', 'editor.js', 'app.js',
 ];
 

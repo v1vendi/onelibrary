@@ -26,7 +26,8 @@ WASM blob and no external fetches:
 | `src/editor.js` | Track edits and saving |
 | `src/anlz.js` | ANLZ cues, beatgrid and waveforms |
 | `src/waveform.js` | Canvas rendering |
-| `src/player.js` | Playback and cue stepping |
+| `src/player.js` | Web Audio playback and cue stepping |
+| `src/envelope.js` | Peak summary of decoded audio, for drawing |
 
 ### Decryption
 
@@ -93,9 +94,22 @@ a stutter and a tiny speed change is not. Only an error too large to walk back
 that way gets a jump. If the tempo difference is beyond the pitch range it says
 so rather than doing nothing.
 
-The lock holds to within about 1% of a bar in practice. `<audio>` playback-rate
-control is not sample-accurate, so this is a usable lock rather than a
-sample-locked one.
+## Why not `<audio>`
+
+Playback runs on the Web Audio API, not a media element. `currentTime` on an
+`<audio>` element snaps to a decoder frame boundary — 26 ms for MP3 at
+44.1 kHz, before encoder delay — so a seek lands up to a frame from where it
+was asked to go, and reading the position back is quantised the same way. At
+94 BPM that is about a sixteenth of a beat, which is exactly the lateness a
+synced deck had.
+
+Decoding the whole file into an `AudioBuffer` makes `start(when, offset)` exact
+in both arguments, and position comes from the `AudioContext` clock. Measured
+seek error is now 0 ms at every value tried, including fractional milliseconds,
+and sync lands at 0 ms of bar error.
+
+The cost is memory and an up-front decode: about 60 MB of float samples and
+~350 ms for a three-minute track.
 
 | Control | |
 |---|---|
@@ -122,6 +136,16 @@ overlaying them, and dims what has already played — what is left to play is
 what a DJ is reading, so that stays bright.
 
 Two details make it behave like a DJ display rather than a plot:
+
+**The shape comes from the decoded audio, not from `PWV5`.** The stored
+waveform is 150 columns a second at five bits of height, so at any useful zoom
+there are barely more columns than pixels and every stroke is a hard step. The
+buffer is already in memory for playback, so a real min/max envelope is
+summarised from it once at load. ANLZ still supplies the band mix — its
+three-bit low/mid/high split is real analysis — so only the shape changed.
+
+Bands are drawn nested inside one outline rather than as three separate
+heights, which is what makes low/mid/high read as a split of a single shape.
 
 **Bins are anchored to source columns, not to screen position.** Re-slicing the
 data by pixel every frame makes the peak inside each bin jump between

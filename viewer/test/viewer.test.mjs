@@ -396,7 +396,13 @@ function fakeDeck(id, bpm, beatCount = 64, startMs = 0) {
   d.cuePointMs = 0;
   d.syncOn = false;
   d.listeners = new Set();
-  d.player = { playing: false, audio: { playbackRate: 1, pause() {} } };
+  // A Player-shaped stub: the real one builds a Web Audio graph, which does not
+  // exist in Node, and none of the tempo logic under test touches it.
+  d.player = {
+    playing: false, rate: 1,
+    setRate(r) { this.rate = r; },
+    pause() { this.playing = false; },
+  };
   const beatMs = 60000 / bpm;
   d.track = { bpmx100: Math.round(bpm * 100), length: 300 };
   d.anlz = {
@@ -605,9 +611,9 @@ test('a refused sync does not latch', () => {
 test('releasing restores the deck to its own fader', () => {
   const a = fakeDeck('A', 128), b = fakeDeck('B', 124);
   b.enableSync(a);
-  b.player.audio.playbackRate = 1.007;   // as a nudge would leave it
+  b.player.setRate(1.007);               // as a nudge would leave it
   b.disableSync();
-  assert.equal(b.player.audio.playbackRate, b.baseRate);
+  assert.equal(b.player.rate, b.baseRate);
 });
 
 test('a locked deck keeps following the master tempo', () => {
@@ -625,14 +631,64 @@ test('holding is inert when either deck is stopped', () => {
   b.setRange(16);
   b.enableSync(a);
   b.holdSync(a);
-  assert.equal(b.player.audio.playbackRate, b.baseRate,
+  assert.equal(b.player.rate, b.baseRate,
     'a stopped deck should sit at its plain rate, not a correction');
 });
 
 test('holdSync does nothing when not latched', () => {
   const a = fakeDeck('A', 128), b = fakeDeck('B', 124);
-  b.player.audio.playbackRate = 1;
+  b.player.setRate(1);
   b.holdSync(a);
   assert.equal(b.pitch, 0);
-  assert.equal(b.player.audio.playbackRate, 1);
+  assert.equal(b.player.rate, 1);
+});
+
+// -- envelope ---------------------------------------------------------------
+
+import { buildEnvelope, peakBetween } from '../src/envelope.js';
+
+/** A stand-in for AudioBuffer; only the accessors the builder uses. */
+function fakeBuffer(channels, sampleRate = 100) {
+  const length = channels[0].length;
+  return {
+    numberOfChannels: channels.length,
+    length,
+    sampleRate,
+    duration: length / sampleRate,
+    getChannelData: (i) => channels[i],
+  };
+}
+
+test('the envelope captures the peak of each bucket', () => {
+  const data = Float32Array.from({ length: 100 }, (_, i) => (i === 50 ? 0.9 : 0.1));
+  const env = buildEnvelope(fakeBuffer([data]), 10);
+  assert.equal(env.buckets, 10);
+  // Float32 storage rounds 0.9 to 0.89999997, so compare with a tolerance.
+  assert.ok(Math.max(...env.max) > 0.89, 'the transient must survive summarisation');
+});
+
+test('channels fold by widest excursion, not by average', () => {
+  // Out-of-phase content averages to silence; the envelope must not vanish.
+  const left = Float32Array.from({ length: 20 }, () => 0.8);
+  const right = Float32Array.from({ length: 20 }, () => -0.8);
+  const env = buildEnvelope(fakeBuffer([left, right]), 10);
+  assert.ok(Math.max(...env.max) > 0.7);
+  assert.ok(Math.min(...env.min) < -0.7);
+});
+
+test('peakBetween reads a time span', () => {
+  const data = Float32Array.from({ length: 100 }, (_, i) => (i > 80 ? 1 : 0));
+  const env = buildEnvelope(fakeBuffer([data]), 100);
+  assert.ok(peakBetween(env, 900, 1000).max > 0.9, 'late transient should be found');
+  assert.equal(peakBetween(env, 0, 100).max, 0, 'early silence should stay silent');
+});
+
+test('peakBetween clamps outside the track', () => {
+  const env = buildEnvelope(fakeBuffer([new Float32Array(50)]), 50);
+  assert.deepEqual(peakBetween(env, -5000, -1000), { min: 0, max: 0 });
+  assert.deepEqual(peakBetween(env, 900_000, 999_000), { min: 0, max: 0 });
+});
+
+test('peakBetween tolerates a missing envelope', () => {
+  assert.deepEqual(peakBetween(null, 0, 100), { min: 0, max: 0 });
 });

@@ -1,8 +1,8 @@
 /**
  * A deck: one loaded track, its analysis, and its tempo.
  *
- * Tempo is driven through `playbackRate`, which shifts pitch with it — the
- * behaviour of a turntable or a CDJ with master tempo off, not of a
+ * Tempo is driven through the source's playback rate, which shifts pitch with
+ * it — the behaviour of a turntable or a CDJ with master tempo off, not of a
  * key-preserving stretch. That is the honest default for a pitch fader; key
  * lock would need a time-stretcher this does not have.
  */
@@ -69,24 +69,23 @@ export class Deck {
     return Math.max(0, this.durationMs - this.player.positionMs);
   }
 
-  load({ track, anlz, audioFile, artworkUrl }) {
+  async load({ track, anlz, audioFile, artworkUrl }) {
     if (this.artworkUrl) URL.revokeObjectURL(this.artworkUrl);
     this.track = track;
     this.anlz = anlz;
     this.artworkUrl = artworkUrl ?? null;
     this.pitch = 0;
-    this.player.audio.playbackRate = 1;
+    this.player.setRate(1);
     const memory = (anlz?.cues ?? []).filter((c) => c.isMemory);
     this.cuePointMs = memory.length ? memory[0].timeMs : 0;
-    this.player.load(audioFile, anlz?.cues ?? []);
+    const ok = await this.player.load(audioFile, anlz?.cues ?? []);
     this.emit();
-    return Boolean(audioFile);
+    return ok;
   }
 
   setPitch(percent) {
     this.pitch = Math.max(-this.range, Math.min(this.range, percent));
-    // playbackRate is clamped by the browser well outside any DJ range.
-    this.player.audio.playbackRate = 1 + this.pitch / 100;
+    this.player.setRate(this.baseRate);
     this.emit();
   }
 
@@ -109,7 +108,7 @@ export class Deck {
     if (!this.player.playing && atCuePoint) {
       this.cuePointMs = this.player.positionMs;
     } else {
-      this.player.audio.pause();
+      this.player.pause();
       this.player.seekMs(this.cuePointMs);
     }
     this.emit();
@@ -131,8 +130,8 @@ export class Deck {
    * Where the playhead sits between two beats, as a fraction of one beat.
    *
    * Beat times come from the analysis and are in the track's own timeline, so
-   * they stay valid whatever the pitch fader is doing -- `currentTime` is media
-   * time, not wall-clock time.
+   * they stay valid whatever the pitch fader is doing -- the player reports
+   * position in buffer time, not wall-clock time.
    */
   beatPhaseAt(ms = this.player.positionMs) {
     const beats = this.anlz?.beats ?? [];
@@ -224,7 +223,7 @@ export class Deck {
 
   disableSync() {
     this.syncOn = false;
-    this.player.audio.playbackRate = this.baseRate;
+    this.player.setRate(this.baseRate);
     this.emit();
   }
 
@@ -243,7 +242,7 @@ export class Deck {
     if (Math.abs(needed) <= this.range) this.pitch = needed;
 
     if (!this.player.playing || !other.player.playing) {
-      this.player.audio.playbackRate = this.baseRate;
+      this.player.setRate(this.baseRate);
       return;
     }
 
@@ -258,11 +257,11 @@ export class Deck {
 
     if (Math.abs(errorMs) > barMs * JUMP_THRESHOLD) {
       this.player.seekMs(this.player.positionMs + errorMs);
-      this.player.audio.playbackRate = this.baseRate;
+      this.player.setRate(this.baseRate);
       return;
     }
     const nudge = Math.max(-MAX_NUDGE, Math.min(MAX_NUDGE, (errorMs / 1000) * NUDGE_GAIN));
-    this.player.audio.playbackRate = this.baseRate * (1 + nudge);
+    this.player.setRate(this.baseRate * (1 + nudge));
   }
 
   unload() {
