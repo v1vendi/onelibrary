@@ -101,12 +101,6 @@ header h1 {
 }
 header h1 b { color: var(--accent); font-weight: 650; }
 .spacer { flex: 1; }
-input[type=text] {
-  font: inherit; font-size: 12px; padding: 6px 10px; width: 200px;
-  border: 1px solid var(--line); border-radius: 7px;
-  background: var(--ground); color: var(--ink);
-}
-input[type=text]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 #status {
   padding: 9px 18px; font-size: 13px;
@@ -410,7 +404,7 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 :root[data-skin="classic"] #content,
 :root[data-skin="classic"] canvas.wave,
 :root[data-skin="classic"] .clock,
-:root[data-skin="classic"] input[type=text],
+:root[data-skin="classic"]
 :root[data-skin="classic"] input.edit {
   border-radius: 0;
   border-style: solid; border-width: 1px;
@@ -440,10 +434,6 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   opacity: .55;
 }
 
-:root[data-skin="classic"] input[type=text] {
-  background: #000; color: var(--phosphor); font-family: inherit;
-  font-size: 10px; padding: 3px 6px; width: 150px;
-}
 :root[data-skin="classic"] button.skin {
   background: var(--chassis); color: var(--phosphor);
   font-size: 9px; padding: 3px 7px; letter-spacing: .1em;
@@ -576,7 +566,6 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   <h1>One<b>Library</b> Viewer</h1>
   <span class="label">decrypts rekordbox exports in your browser</span>
   <span class="spacer"></span>
-  <input type="text" id="key" placeholder="passphrase (optional)" spellcheck="false" aria-label="SQLCipher passphrase">
   <button class="skin" id="skin" type="button">Classic skin</button>
 </header>
 <div id="status" hidden></div>

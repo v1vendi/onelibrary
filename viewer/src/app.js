@@ -94,10 +94,9 @@ async function load(files) {
 
   status(`Decrypting ${found.path}…`);
   const buffer = new Uint8Array(await found.file.arrayBuffer());
-  const key = $('#key').value.trim() || DEFAULT_KEY;
   let plain;
   try {
-    plain = await decrypt(buffer, key, (done, total) => {
+    plain = await decrypt(buffer, DEFAULT_KEY, (done, total) => {
       if (done % 512 === 0) status(`Decrypting… ${done}/${total} pages`);
     });
   } catch (err) {
@@ -548,8 +547,7 @@ function renderSaveBar() {
     save.disabled = true;
     save.textContent = 'Saving…';
     try {
-      const key = $('#key').value.trim() || undefined;
-      const route = await saveEdits(state.db, editor, key, state.deviceHandle);
+      const route = await saveEdits(state.db, editor, undefined, state.deviceHandle);
       status({
         'in-place': 'Saved to the device. The previous database is kept as exportLibrary.db.bak.',
         'database': 'Saved exportLibrary.db. Copy it into PIONEER/rekordbox/ on the device, replacing the original.',
@@ -655,9 +653,8 @@ export function init() {
     await load(files);
   });
 
-  // Public API: drive the viewer without a drag-and-drop gesture. `files` maps
-  // lowercase device-relative paths to File or Blob objects.
-  // Transport shortcuts. Ignored while typing in the passphrase field.
+  // Transport shortcuts, suppressed while a metadata field has focus so typing
+  // a title does not scrub the deck.
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input, textarea')) return;
     if (e.key === ' ') { e.preventDefault(); player.toggle(); }
