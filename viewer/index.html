@@ -3,141 +3,252 @@
 <title>OneLibrary Viewer</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
+/* ---------------------------------------------------------------------------
+   Palette taken from the subject: DJ equipment, and rekordbox's own cue
+   colours. Cyan and amber are not decoration here -- they are the colours
+   rekordbox assigns to hot cues and memory cues, so they carry meaning in the
+   data and are reused as the interface accents. Neutrals are biased cool, the
+   way equipment housings and backlit panels read, never flat grey.
+   --------------------------------------------------------------------------- */
 :root {
-  --bg: #fbfbfc; --panel: #fff; --border: #e3e3e8; --text: #16161a;
-  --muted: #6b6b76; --accent: #2563eb; --row: #f4f4f7;
-  --wave-bg: #101014; --ok: #15803d; --err: #b91c1c;
+  --ground:   #f4f6f8;
+  --panel:    #ffffff;
+  --sunken:   #eaeef2;
+  --line:     #d8dfe6;
+  --ink:      #10161c;
+  --ink-soft: #5c6b7a;
+  --hot:      #0089b8;   /* hot cue    */
+  --memory:   #b86a00;   /* memory cue */
+  --accent:   var(--hot);
+  --on-accent:#ffffff;
+  --star:     #d98500;
+  --ok:       #157347;
+  --err:      #b02a2a;
+  /* The waveform is a device screen. It stays dark in both themes. */
+  --screen:   #07090b;
+  --screen-line: #1d242b;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme=light]) {
-    --bg: #0e0e11; --panel: #17171c; --border: #2a2a33; --text: #ececf1;
-    --muted: #9a9aa8; --accent: #60a5fa; --row: #1e1e25;
-    --wave-bg: #08080a; --ok: #4ade80; --err: #f87171;
+  :root:not([data-theme="light"]) {
+    --ground:   #0b0e11;
+    --panel:    #141920;
+    --sunken:   #1b222a;
+    --line:     #262f39;
+    --ink:      #e6ecf2;
+    --ink-soft: #7d8b99;
+    --hot:      #35c8f5;
+    --memory:   #ffa022;
+    --accent:   var(--hot);
+    --on-accent:#04222c;
+    --star:     #f0a92c;
+    --ok:       #4ade80;
+    --err:      #f87171;
+    --screen:   #050709;
+    --screen-line: #171d24;
   }
 }
-:root[data-theme=dark] {
-  --bg: #0e0e11; --panel: #17171c; --border: #2a2a33; --text: #ececf1;
-  --muted: #9a9aa8; --accent: #60a5fa; --row: #1e1e25;
-  --wave-bg: #08080a; --ok: #4ade80; --err: #f87171;
+:root[data-theme="dark"] {
+  --ground:   #0b0e11;
+  --panel:    #141920;
+  --sunken:   #1b222a;
+  --line:     #262f39;
+  --ink:      #e6ecf2;
+  --ink-soft: #7d8b99;
+  --hot:      #35c8f5;
+  --memory:   #ffa022;
+  --accent:   var(--hot);
+  --on-accent:#04222c;
+  --star:     #f0a92c;
+  --ok:       #4ade80;
+  --err:      #f87171;
+  --screen:   #050709;
+  --screen-line: #171d24;
 }
+
 * { box-sizing: border-box; }
+
 body {
-  margin: 0; background: var(--bg); color: var(--text);
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
   font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* Equipment-panel labelling: small, wide-tracked, uppercase. */
+.label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- device header -------------------------------------------------------- */
+
 header {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 11px 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
 }
-header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
-header .sub { color: var(--muted); font-size: 12px; }
-header .spacer { flex: 1; }
+header h1 {
+  margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -0.005em;
+}
+header h1 b { color: var(--accent); font-weight: 650; }
+.spacer { flex: 1; }
 input[type=text] {
-  font: inherit; font-size: 12px; padding: 5px 8px; width: 190px;
-  border: 1px solid var(--border); border-radius: 6px;
-  background: var(--bg); color: var(--text);
+  font: inherit; font-size: 12px; padding: 6px 10px; width: 200px;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: var(--ground); color: var(--ink);
 }
-#status { padding: 8px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
-#status[data-kind=ok] { color: var(--ok); }
+input[type=text]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+#status {
+  padding: 9px 18px; font-size: 13px;
+  background: var(--sunken); border-bottom: 1px solid var(--line);
+}
+#status[data-kind=ok]    { color: var(--ok); }
 #status[data-kind=error] { color: var(--err); }
 
+/* --- drop zone ------------------------------------------------------------ */
+
 #dropzone {
-  margin: 8vh auto; max-width: 620px; padding: 44px 32px; text-align: center;
-  border: 2px dashed var(--border); border-radius: 14px; background: var(--panel);
+  margin: 9vh auto; max-width: 600px; padding: 46px 34px; text-align: center;
+  background: var(--panel);
+  border: 1px dashed var(--line); border-radius: 16px;
 }
-#dropzone.over { border-color: var(--accent); background: var(--row); }
-#dropzone h2 { margin: 0 0 8px; font-size: 19px; }
-#dropzone p { color: var(--muted); margin: 8px 0; }
-#dropzone .note {
-  font-size: 12px; margin-top: 20px; padding-top: 16px;
-  border-top: 1px solid var(--border);
+#dropzone.over { border-color: var(--accent); background: var(--sunken); }
+#dropzone h2 { margin: 0 0 10px; font-size: 21px; letter-spacing: -0.02em; text-wrap: balance; }
+#dropzone p { color: var(--ink-soft); margin: 7px 0; max-width: 46ch; margin-inline: auto; }
+#dropzone code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .9em; background: var(--sunken); padding: 1px 5px; border-radius: 4px;
 }
 label.pick {
-  display: inline-block; margin-top: 12px; padding: 8px 16px; cursor: pointer;
-  background: var(--accent); color: #fff; border-radius: 7px; font-weight: 500;
+  display: inline-block; margin-top: 18px; padding: 9px 20px; cursor: pointer;
+  background: var(--accent); color: var(--on-accent);
+  border-radius: 8px; font-weight: 600; font-size: 13px;
 }
-label.pick input { display: none; }
-
-#main { display: grid; grid-template-columns: 250px 1fr; min-height: calc(100vh - 47px); }
-@media (max-width: 760px) { #main { grid-template-columns: 1fr; } }
-
-#sidebar { border-right: 1px solid var(--border); padding: 14px 10px; background: var(--panel); }
-.device { padding: 0 6px 14px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
-.device-name { font-weight: 650; }
-.device-meta { color: var(--muted); font-size: 12px; }
-.sec-title {
-  font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--muted); padding: 6px; margin-top: 6px;
+label.pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+label.pick input { position: absolute; opacity: 0; width: 0; height: 0; }
+#dropzone .note {
+  font-size: 12px; color: var(--ink-soft);
+  margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line);
 }
+
+/* --- shell ---------------------------------------------------------------- */
+
+#main { display: grid; grid-template-columns: 244px 1fr; min-height: calc(100vh - 48px); }
+@media (max-width: 780px) { #main { grid-template-columns: 1fr; } }
+
+#sidebar {
+  background: var(--panel); border-right: 1px solid var(--line);
+  padding: 16px 10px; display: flex; flex-direction: column; gap: 4px;
+}
+.device { padding: 0 8px 15px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.device-name { font-weight: 650; font-size: 15px; letter-spacing: -0.01em; }
+.device-meta { color: var(--ink-soft); font-size: 12px; }
+.sec-title { padding: 10px 8px 4px; }
 button.nav {
-  display: block; width: 100%; text-align: left; padding: 7px 9px; margin-bottom: 2px;
-  background: none; border: 0; border-radius: 6px; cursor: pointer;
-  color: var(--text); font: inherit;
+  display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+  width: 100%; text-align: left; padding: 8px 10px;
+  background: none; border: 0; border-radius: 7px; cursor: pointer;
+  color: var(--ink); font: inherit;
 }
-button.nav:hover { background: var(--row); }
-button.nav.active { background: var(--accent); color: #fff; }
+button.nav:hover { background: var(--sunken); }
+button.nav:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+button.nav.active { background: var(--accent); color: var(--on-accent); }
+button.nav .n { font-size: 12px; opacity: .7; font-variant-numeric: tabular-nums; }
 
-#content { padding: 14px 16px; overflow-x: auto; }
+#content { padding: 16px 18px 40px; overflow-x: auto; }
+
+/* --- track table ---------------------------------------------------------- */
+
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th {
-  text-align: left; font-weight: 600; color: var(--muted); font-size: 11px;
-  text-transform: uppercase; letter-spacing: .05em;
-  padding: 6px 8px; border-bottom: 1px solid var(--border);
+  text-align: left; padding: 7px 9px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px; font-weight: 600; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--ink-soft);
 }
-td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+th.r, td.num { text-align: right; }
+td { padding: 7px 9px; border-bottom: 1px solid var(--line); }
 tbody tr { cursor: pointer; }
-tbody tr:hover { background: var(--row); }
-tbody tr.sel { background: var(--accent); color: #fff; }
-tbody tr.sel .stars, tbody tr.sel td { color: #fff; }
-td.title { font-weight: 500; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-td.num { text-align: right; font-variant-numeric: tabular-nums; }
-td.swatch { width: 18px; }
+tbody tr:hover { background: var(--sunken); }
+tbody tr.sel { background: var(--accent); color: var(--on-accent); }
+/* Every cell that sets its own colour must yield on the selected row, or it
+   keeps a muted tone against the accent ground and drops out of contrast. */
+tbody tr.sel td, tbody tr.sel .stars { color: var(--on-accent); }
+/* Keep every row one line tall: a wrapping artist name makes the table ragged
+   and destroys the scannability the tabular figures are there to provide. */
+td.title, td.artist {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+td.title  { font-weight: 550; max-width: 34ch; }
+td.artist { max-width: 22ch; color: var(--ink-soft); }
+/* Below this the artist column is the first thing worth sacrificing. */
+@media (max-width: 1040px) { td.artist, th.artist { display: none; } }
+td.num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+td.swatch { width: 20px; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
-.stars { color: #f5a524; letter-spacing: -1px; }
+.stars { color: var(--star); letter-spacing: -1px; white-space: nowrap; }
+
+/* --- deck / detail -------------------------------------------------------- */
 
 #detail {
-  margin-top: 22px; padding: 16px; background: var(--panel);
-  border: 1px solid var(--border); border-radius: 10px;
+  margin-top: 24px; padding: 18px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
 }
-#detail h2 { margin: 0 0 4px; font-size: 17px; }
-#detail .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+#detail h2 { margin: 0 0 5px; font-size: 18px; letter-spacing: -0.02em; text-wrap: balance; }
+#detail .meta {
+  color: var(--ink-soft); font-size: 13px; margin-bottom: 16px;
+  display: flex; flex-wrap: wrap; gap: 4px 12px;
+}
+#detail .meta .v { color: var(--ink); font-weight: 550; }
 canvas.wave {
-  width: 100%; height: 168px; display: block;
-  background: var(--wave-bg); border-radius: 8px;
+  width: 100%; height: 172px; display: block;
+  background: var(--screen);
+  border: 1px solid var(--screen-line); border-radius: 9px;
 }
-.legend { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
+.legend { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
 .chip {
-  font-size: 11px; padding: 3px 9px; border-radius: 999px;
-  background: var(--row); color: var(--muted); border: 1px solid var(--border);
+  font-size: 11px; font-weight: 550; padding: 3px 10px; border-radius: 999px;
+  background: var(--sunken); color: var(--ink-soft); border: 1px solid var(--line);
 }
-.chip.hot { color: #00c8ff; border-color: #00c8ff55; }
-.chip.mem { color: #ff9500; border-color: #ff950055; }
-.chip.loop { color: var(--accent); border-color: var(--accent); }
+.chip.hot  { color: var(--hot);    border-color: color-mix(in srgb, var(--hot) 45%, transparent); }
+.chip.mem  { color: var(--memory); border-color: color-mix(in srgb, var(--memory) 45%, transparent); }
+.chip.loop { color: var(--ink); border-color: var(--ink-soft); }
 .path {
-  margin-top: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px; color: var(--muted); word-break: break-all;
+  margin-top: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; color: var(--ink-soft); word-break: break-all;
 }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 
 <header>
-  <h1>OneLibrary Viewer</h1>
-  <span class="sub">decrypts and reads rekordbox exports locally</span>
+  <h1>One<b>Library</b> Viewer</h1>
+  <span class="label">decrypts rekordbox exports in your browser</span>
   <span class="spacer"></span>
-  <input type="text" id="key" placeholder="passphrase (optional)" spellcheck="false">
+  <input type="text" id="key" placeholder="passphrase (optional)" spellcheck="false" aria-label="SQLCipher passphrase">
 </header>
 <div id="status" hidden></div>
 
 <section id="dropzone">
   <h2>Drop a rekordbox device here</h2>
-  <p>Drag the whole USB stick or SD card onto this page.</p>
-  <p>Or drop just <code>exportLibrary.db</code> to browse the library without waveforms.</p>
+  <p>Drag a USB stick or SD card onto this page to browse its tracks, playlists, cues and waveforms.</p>
+  <p>Dropping just <code>exportLibrary.db</code> works too, but without the analysis files there are no waveforms.</p>
   <label class="pick">
-    Choose a folder…
+    Choose a folder
     <input type="file" id="picker" webkitdirectory directory multiple>
   </label>
   <p class="note">
-    Everything happens in this page. The database is decrypted in your browser
-    with WebCrypto and nothing is uploaded anywhere.
+    Nothing is uploaded. The database is decrypted here in the page using
+    WebCrypto, and never leaves this machine.
   </p>
 </section>
 

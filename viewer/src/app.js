@@ -174,16 +174,28 @@ function renderSidebar() {
   if (prop.createdDate) head.append(el('div', 'device-meta', `exported ${prop.createdDate}`));
   side.append(head);
 
-  side.append(el('div', 'sec-title', 'Playlists'));
-  const all = el('button', 'nav' + (state.filter == null ? ' active' : ''), `All tracks (${state.tracks.length})`);
-  all.onclick = () => { state.filter = null; render(); };
-  side.append(all);
+  side.append(el('div', 'label sec-title', 'Playlists'));
 
+  const navButton = (name, count, active, onClick) => {
+    const b = el('button', 'nav' + (active ? ' active' : ''));
+    b.append(el('span', null, name));
+    b.append(el('span', 'n', String(count)));
+    b.onclick = onClick;
+    return b;
+  };
+
+  side.append(
+    navButton('All tracks', state.tracks.length, state.filter == null, () => {
+      state.filter = null; render();
+    })
+  );
   for (const p of state.playlists) {
     const count = state.playlistContent.filter((x) => x.playlist_id === p.playlist_id).length;
-    const b = el('button', 'nav' + (state.filter === p.playlist_id ? ' active' : ''), `${p.name} (${count})`);
-    b.onclick = () => { state.filter = p.playlist_id; render(); };
-    side.append(b);
+    side.append(
+      navButton(p.name, count, state.filter === p.playlist_id, () => {
+        state.filter = p.playlist_id; render();
+      })
+    );
   }
 }
 
@@ -203,7 +215,10 @@ function renderList() {
   const table = el('table');
   const thead = el('thead');
   const hr = el('tr');
-  for (const h of ['', 'Title', 'Artist', 'BPM', 'Key', 'Time', '★']) hr.append(el('th', null, h));
+  for (const [h, cls] of [['', null], ['Title', null], ['Artist', 'artist'],
+                          ['BPM', 'r'], ['Key', null], ['Time', 'r'], ['Rating', null]]) {
+    hr.append(el('th', cls, h));
+  }
   thead.append(hr);
   table.append(thead);
   const tbody = el('tbody');
@@ -221,7 +236,7 @@ function renderList() {
     }
     tr.append(swatch);
     tr.append(el('td', 'title', t.title || ''));
-    tr.append(el('td', null, f.artist));
+    tr.append(el('td', 'artist', f.artist));
     tr.append(el('td', 'num', t.bpmx100 ? (t.bpmx100 / 100).toFixed(2) : ''));
     tr.append(el('td', null, f.key));
     tr.append(el('td', 'num', fmtTime(t.length)));
@@ -260,15 +275,25 @@ async function selectTrack(t) {
 
   const f = trackFields(t);
   detail.append(el('h2', null, t.title || '(untitled)'));
+  // Labelled readouts rather than a run-on line: this panel is scanned, not read.
   const meta = el('div', 'meta');
-  const bits = [
-    f.artist, f.album, f.genre,
-    t.bpmx100 ? `${(t.bpmx100 / 100).toFixed(2)} BPM` : null,
-    f.key, fmtTime(t.length),
-    t.rating ? '★'.repeat(t.rating) : null,
-    t.bitrate ? `${t.bitrate} kbps` : null,
-  ].filter(Boolean);
-  meta.textContent = bits.join('  ·  ');
+  const pairs = [
+    ['Artist', f.artist],
+    ['Album', f.album],
+    ['Genre', f.genre],
+    ['BPM', t.bpmx100 ? (t.bpmx100 / 100).toFixed(2) : ''],
+    ['Key', f.key],
+    ['Length', fmtTime(t.length)],
+    ['Rating', t.rating ? '★'.repeat(t.rating) : ''],
+    ['Bitrate', t.bitrate ? `${t.bitrate} kbps` : ''],
+  ];
+  for (const [k, v] of pairs) {
+    if (!v) continue;
+    const item = el('span');
+    item.append(el('span', 'label', k + ' '));
+    item.append(el('span', 'v', v));
+    meta.append(item);
+  }
   detail.append(meta);
 
   const canvas = el('canvas', 'wave');
