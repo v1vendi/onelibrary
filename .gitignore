@@ -11,3 +11,5 @@ build/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+viewer/dist/
+viewer/node_modules/

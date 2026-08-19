@@ -1,0 +1,155 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>OneLibrary Viewer</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  --bg: #fbfbfc; --panel: #fff; --border: #e3e3e8; --text: #16161a;
+  --muted: #6b6b76; --accent: #2563eb; --row: #f4f4f7;
+  --wave-bg: #101014; --ok: #15803d; --err: #b91c1c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme=light]) {
+    --bg: #0e0e11; --panel: #17171c; --border: #2a2a33; --text: #ececf1;
+    --muted: #9a9aa8; --accent: #60a5fa; --row: #1e1e25;
+    --wave-bg: #08080a; --ok: #4ade80; --err: #f87171;
+  }
+}
+:root[data-theme=dark] {
+  --bg: #0e0e11; --panel: #17171c; --border: #2a2a33; --text: #ececf1;
+  --muted: #9a9aa8; --accent: #60a5fa; --row: #1e1e25;
+  --wave-bg: #08080a; --ok: #4ade80; --err: #f87171;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+header {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
+}
+header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+header .sub { color: var(--muted); font-size: 12px; }
+header .spacer { flex: 1; }
+input[type=text] {
+  font: inherit; font-size: 12px; padding: 5px 8px; width: 190px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text);
+}
+#status { padding: 8px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
+#status[data-kind=ok] { color: var(--ok); }
+#status[data-kind=error] { color: var(--err); }
+
+#dropzone {
+  margin: 8vh auto; max-width: 620px; padding: 44px 32px; text-align: center;
+  border: 2px dashed var(--border); border-radius: 14px; background: var(--panel);
+}
+#dropzone.over { border-color: var(--accent); background: var(--row); }
+#dropzone h2 { margin: 0 0 8px; font-size: 19px; }
+#dropzone p { color: var(--muted); margin: 8px 0; }
+#dropzone .note {
+  font-size: 12px; margin-top: 20px; padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+label.pick {
+  display: inline-block; margin-top: 12px; padding: 8px 16px; cursor: pointer;
+  background: var(--accent); color: #fff; border-radius: 7px; font-weight: 500;
+}
+label.pick input { display: none; }
+
+#main { display: grid; grid-template-columns: 250px 1fr; min-height: calc(100vh - 47px); }
+@media (max-width: 760px) { #main { grid-template-columns: 1fr; } }
+
+#sidebar { border-right: 1px solid var(--border); padding: 14px 10px; background: var(--panel); }
+.device { padding: 0 6px 14px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.device-name { font-weight: 650; }
+.device-meta { color: var(--muted); font-size: 12px; }
+.sec-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--muted); padding: 6px; margin-top: 6px;
+}
+button.nav {
+  display: block; width: 100%; text-align: left; padding: 7px 9px; margin-bottom: 2px;
+  background: none; border: 0; border-radius: 6px; cursor: pointer;
+  color: var(--text); font: inherit;
+}
+button.nav:hover { background: var(--row); }
+button.nav.active { background: var(--accent); color: #fff; }
+
+#content { padding: 14px 16px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; font-weight: 600; color: var(--muted); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .05em;
+  padding: 6px 8px; border-bottom: 1px solid var(--border);
+}
+td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--row); }
+tbody tr.sel { background: var(--accent); color: #fff; }
+tbody tr.sel .stars, tbody tr.sel td { color: #fff; }
+td.title { font-weight: 500; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.swatch { width: 18px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.stars { color: #f5a524; letter-spacing: -1px; }
+
+#detail {
+  margin-top: 22px; padding: 16px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 10px;
+}
+#detail h2 { margin: 0 0 4px; font-size: 17px; }
+#detail .meta { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+canvas.wave {
+  width: 100%; height: 168px; display: block;
+  background: var(--wave-bg); border-radius: 8px;
+}
+.legend { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
+.chip {
+  font-size: 11px; padding: 3px 9px; border-radius: 999px;
+  background: var(--row); color: var(--muted); border: 1px solid var(--border);
+}
+.chip.hot { color: #00c8ff; border-color: #00c8ff55; }
+.chip.mem { color: #ff9500; border-color: #ff950055; }
+.chip.loop { color: var(--accent); border-color: var(--accent); }
+.path {
+  margin-top: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; color: var(--muted); word-break: break-all;
+}
+</style>
+
+<header>
+  <h1>OneLibrary Viewer</h1>
+  <span class="sub">decrypts and reads rekordbox exports locally</span>
+  <span class="spacer"></span>
+  <input type="text" id="key" placeholder="passphrase (optional)" spellcheck="false">
+</header>
+<div id="status" hidden></div>
+
+<section id="dropzone">
+  <h2>Drop a rekordbox device here</h2>
+  <p>Drag the whole USB stick or SD card onto this page.</p>
+  <p>Or drop just <code>exportLibrary.db</code> to browse the library without waveforms.</p>
+  <label class="pick">
+    Choose a folder…
+    <input type="file" id="picker" webkitdirectory directory multiple>
+  </label>
+  <p class="note">
+    Everything happens in this page. The database is decrypted in your browser
+    with WebCrypto and nothing is uploaded anywhere.
+  </p>
+</section>
+
+<div id="main" hidden>
+  <aside id="sidebar"></aside>
+  <main id="content">
+    <div id="list"></div>
+    <div id="detail" hidden></div>
+  </main>
+</div>
+
+<script type="module">
+  import { init } from './src/app.js';
+  init();
+</script>

@@ -1,0 +1,14 @@
+{
+  "name": "onelibrary-viewer",
+  "version": "0.0.1",
+  "description": "Browse a rekordbox OneLibrary export in the browser. Decrypts SQLCipher with WebCrypto; no server, no native modules, no uploads.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/viewer.test.mjs",
+    "serve": "python3 -m http.server 8777"
+  },
+  "files": ["src", "index.html", "dist"],
+  "keywords": ["rekordbox", "onelibrary", "sqlcipher", "dj", "webcrypto"]
+}
