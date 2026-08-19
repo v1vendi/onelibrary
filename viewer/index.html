@@ -253,7 +253,17 @@ button.dbtn.sync { margin-left: auto; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums; min-width: 5ch;
 }
-input.fader { width: 108px; accent-color: var(--accent); }
+/* A vertical pitch fader, as on a player. `writing-mode` is the modern way to
+   turn a range input; the WebKit rule keeps older Safari upright. */
+input.fader {
+  writing-mode: vertical-lr; direction: rtl;
+  -webkit-appearance: slider-vertical;
+  width: 26px; height: 92px; accent-color: var(--accent); cursor: ns-resize;
+}
+input.fader:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tempo { align-items: flex-start; }
+.tempo-readouts { display: flex; flex-direction: column; gap: 1px; }
+.ranges { flex-direction: column; }
 .ranges { display: flex; gap: 2px; }
 button.rbtn {
   font: inherit; font-size: var(--fs-micro); padding: 3px 5px; cursor: pointer;
@@ -341,12 +351,26 @@ tbody tr.edited td.swatch { position: relative; }
 
 /* --- drop zone ------------------------------------------------------------ */
 
+/* An overlay rather than a block in the flow, so a device can be dropped at
+   any time — including over a library that is already open — without the page
+   reflowing around it. */
 #dropzone {
-  margin: 9vh auto; max-width: 600px; padding: 46px 34px; text-align: center;
-  background: var(--panel);
-  border: 1px dashed var(--line); border-radius: 16px;
+  position: fixed; inset: 0; z-index: 50;
+  display: grid; place-content: center; justify-items: center;
+  padding: 34px; text-align: center;
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  backdrop-filter: blur(3px);
 }
-#dropzone.over { border-color: var(--accent); background: var(--sunken); }
+/* The `display: grid` above is an ID rule and outranks the user-agent's
+   `[hidden] { display: none }`, so hiding has to be restated here. */
+#dropzone[hidden] { display: none; }
+#dropzone > * { max-width: 600px; }
+#dropzone::before {
+  content: ''; position: absolute; inset: 24px;
+  border: 2px dashed var(--line); border-radius: 16px; pointer-events: none;
+}
+#dropzone.over::before { border-color: var(--accent); }
+#dropzone.over { background: color-mix(in srgb, var(--accent) 12%, var(--ground)); }
 #dropzone h2 { margin: 0 0 10px; font-size: var(--fs-clock); letter-spacing: -0.02em; text-wrap: balance; }
 #dropzone p { color: var(--ink-soft); margin: 7px 0; max-width: 46ch; margin-inline: auto; }
 #dropzone code {

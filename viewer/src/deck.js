@@ -132,6 +132,21 @@ export class Deck {
   }
 
   /**
+   * Position within the four-beat bar, as a fraction of the bar.
+   *
+   * Beat-level alignment is not enough to make two tracks sit together: landing
+   * on the right beat but the wrong beat *of the bar* puts a snare where a kick
+   * should be. `beat` counts 1-4 in the analysis, so the bar position is that
+   * count plus the fraction through the current beat.
+   */
+  barPhaseAt(ms = this.player.positionMs) {
+    const at = this.beatPhaseAt(ms);
+    if (!at) return null;
+    const withinBar = ((at.beatNumber - 1) % 4 + 4) % 4;
+    return { ...at, barPhase: (withinBar + at.phase) / 4, barMs: at.beatMs * 4 };
+  }
+
+  /**
    * Match another deck's tempo *and* line the beats up.
    *
    * Matching BPM alone leaves the two tracks running at the same speed but out
@@ -151,20 +166,29 @@ export class Deck {
     }
     this.setPitch(needed);
 
-    const theirs = other.beatPhaseAt();
-    const mine = this.beatPhaseAt();
+    const theirs = other.barPhaseAt();
+    const mine = this.barPhaseAt();
     if (!theirs || !mine) {
       this.emit();
       return null; // tempo matched; no beatgrid to align against
     }
 
-    // Move to whichever of this beat or the next is closer, then take on the
-    // other deck's phase. Jumping to the nearer boundary keeps the correction
-    // under half a beat, so sync never lurches the track forward or back.
-    const beats = this.anlz.beats;
-    const boundary = mine.phase <= 0.5 ? mine.index : Math.min(mine.index + 1, beats.length - 1);
-    const span = this.beatPhaseAt(beats[boundary].timeMs)?.beatMs ?? mine.beatMs;
-    this.player.seekMs(beats[boundary].timeMs + theirs.phase * span);
+    // Align on the bar, then pick whichever candidate position is nearest.
+    //
+    // Matching bar phase alone still leaves a choice of which bar to land in,
+    // and taking the wrong one throws the track a whole bar out. Every
+    // candidate that satisfies the phase sits one bar apart, so generating the
+    // neighbours and choosing the closest keeps the correction under half a bar
+    // while still landing on the right beat of the bar.
+    const barMs = mine.barMs;
+    const myBarStart = this.player.positionMs - mine.barPhase * barMs;
+    const aligned = myBarStart + theirs.barPhase * barMs;
+    const candidates = [aligned - barMs, aligned, aligned + barMs].filter((t) => t >= 0);
+    const best = candidates.reduce((a, b) =>
+      Math.abs(b - this.player.positionMs) < Math.abs(a - this.player.positionMs) ? b : a
+    );
+
+    this.player.seekMs(best);
     this.emit();
     return null;
   }

@@ -32,6 +32,22 @@ function cueColor(cue) {
   return cue.isMemory ? MEMORY_CUE_COLOR : HOT_CUE_COLOR;
 }
 
+/* Beatgrid markers, drawn at the edges rather than across the waveform. */
+const BEAT_TICK = '#8a8a8a';
+const BEAT_DOWN = '#e13b2b';
+const BEAT_DOWN_LINE = '#ffffff';
+const BEAT_TICK_SIZE = 5;
+
+/** A small triangle pointing into the canvas from edge `y`. */
+function tick(ctx, x, y, size, direction) {
+  ctx.beginPath();
+  ctx.moveTo(x - size, y);
+  ctx.lineTo(x + size, y);
+  ctx.lineTo(x, y + size * direction * 1.4);
+  ctx.closePath();
+  ctx.fill();
+}
+
 /* rekordbox's three-band palette: bass blue, mid amber, highs near-white. */
 const BAND_LOW = '#1e5fd0';
 const BAND_MID = '#a9741e';
@@ -113,12 +129,27 @@ function drawBands(ctx, x, width, mid, amp, bin, colour) {
  * This is the overview strip: it never scrolls, so a click maps linearly to a
  * position and the player can be scrubbed by dragging across it.
  */
+/**
+ * The whole track at a glance, with a playhead.
+ *
+ * Drawn the way rekordbox draws its overview, which differs from the scrolling
+ * view in three ways:
+ *
+ * - **Half, not mirrored.** It rises from a baseline at the bottom rather than
+ *   spreading either side of a centre line, which gives the same information in
+ *   half the height.
+ * - **Bands stacked, not overlaid.** Bass sits at the bottom with mid and highs
+ *   piled on top, so the band mix reads as a single column rather than three
+ *   shapes fighting for the same space.
+ * - **The played part is dimmed, not the part to come.** What is left to play is
+ *   what a DJ is reading, so it stays bright.
+ */
 export function drawOverview(canvas, waveform, cues, durationMs, positionMs) {
   const { ctx, w, h } = prepare(canvas);
   const cols = waveform?.columns || [];
   if (!cols.length) return;
-  const mid = h / 2;
-  const amp = h / 2 - 3;
+  const base = h - 2;
+  const amp = h - 6;
   const colour = waveform.source === 'PWV5';
 
   for (const c of cues) {
@@ -130,16 +161,34 @@ export function drawOverview(canvas, waveform, cues, durationMs, positionMs) {
   }
 
   const step = Math.max(1, Math.round(cols.length / w));
+  const barW = Math.max(1, w / (cols.length / step));
   for (const bin of binColumns(cols, 0, cols.length, step)) {
     const x = (bin.index / cols.length) * w;
-    drawBands(ctx, x, Math.max(1, w / (cols.length / step)), mid, amp, bin, colour);
+    const total = Math.max(1, shape(bin.height) * amp);
+    if (colour) {
+      // Proportion the stack by each band's share of the column.
+      const sum = bin.low + bin.mid + bin.high || 1;
+      let y = base;
+      for (const [fill, share] of [
+        [BAND_LOW, bin.low / sum],
+        [BAND_MID, bin.mid / sum],
+        [BAND_HIGH, bin.high / sum],
+      ]) {
+        const seg = total * share;
+        ctx.fillStyle = fill;
+        ctx.fillRect(x, y - seg, barW, seg);
+        y -= seg;
+      }
+    } else {
+      ctx.fillStyle = MONO;
+      ctx.fillRect(x, base - total, barW, total);
+    }
   }
 
-  // Dim what has not played yet, so progress reads at a glance.
   if (durationMs) {
     const played = (positionMs / durationMs) * w;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(played, 0, w - played, h);
+    ctx.fillStyle = 'rgba(0,0,0,0.58)';
+    ctx.fillRect(0, 0, played, h);
   }
 
   for (const c of cues) {
@@ -183,12 +232,21 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
   const fromCol = Math.floor(startMs * colsPerMs) - step;
   const toCol = Math.ceil((startMs + windowMs) * colsPerMs) + step;
 
+  // The beatgrid reads from the edges, as on a CDJ: a tick above and below each
+  // beat rather than a line through the waveform, so the grid never competes
+  // with the audio it is measuring. Downbeats are red and carry a full-height
+  // line, which is what makes bar boundaries findable at a glance.
   for (const b of beats) {
     if (b.timeMs < startMs - 50 || b.timeMs > startMs + windowMs + 50) continue;
     const x = msToX(b.timeMs);
     const downbeat = b.beat === 1;
-    ctx.fillStyle = downbeat ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.16)';
-    ctx.fillRect(x, downbeat ? 0 : h * 0.2, downbeat ? 1.5 : 1, downbeat ? h : h * 0.6);
+    if (downbeat) {
+      ctx.fillStyle = BEAT_DOWN_LINE;
+      ctx.fillRect(x - 0.5, 0, 1.5, h);
+    }
+    ctx.fillStyle = downbeat ? BEAT_DOWN : BEAT_TICK;
+    tick(ctx, x, 0, BEAT_TICK_SIZE, 1);
+    tick(ctx, x, h, BEAT_TICK_SIZE, -1);
   }
 
   for (const c of cues) {

@@ -491,13 +491,13 @@ test('narrowing the range re-clamps the current pitch', () => {
 import { drawDetail, drawOverview } from '../src/waveform.js';
 
 function stubCanvas(w = 600, h = 120) {
-  const calls = { fillRect: 0, fillText: 0, fills: new Set() };
+  const calls = { fillRect: 0, fillText: 0, fill: 0, fills: new Set() };
   const ctx = {
     set fillStyle(v) { calls.fills.add(v); },
     get fillStyle() { return '#000'; },
     setTransform() {}, clearRect() {}, fillRect() { calls.fillRect++; },
     fillText() { calls.fillText++; }, beginPath() {}, moveTo() {}, lineTo() {},
-    stroke() {}, save() {}, restore() {},
+    closePath() {}, fill() { calls.fill++; }, stroke() {}, save() {}, restore() {},
     set font(v) {}, set textAlign(v) {}, set textBaseline(v) {},
     set strokeStyle(v) {}, set lineWidth(v) {}, set globalAlpha(v) {},
   };
@@ -562,4 +562,23 @@ test('binning is stable as the playhead advances', () => {
   }
   const spread = Math.max(...counts) - Math.min(...counts);
   assert.ok(spread <= 3, `bar count should be near-constant, spread was ${spread}`);
+});
+
+test('the beatgrid draws edge ticks, not lines through the waveform', () => {
+  const { canvas, calls } = stubCanvas();
+  drawDetail(canvas, WAVE, [], BEATS, 50000, 5000, 8000);
+  // Two triangles per visible beat, filled as paths.
+  assert.ok(calls.fill >= 16, `expected beat ticks as paths, got ${calls.fill}`);
+  assert.ok(calls.fills.has('#e13b2b'), 'downbeats should be red');
+  assert.ok(calls.fills.has('#8a8a8a'), 'plain beats should be grey');
+});
+
+test('the overview stacks bands from a baseline rather than mirroring', () => {
+  const { canvas, calls } = stubCanvas(600, 60);
+  drawOverview(canvas, WAVE, [], 50000, 25000);
+  for (const band of ['#1e5fd0', '#a9741e', '#f0ede4']) {
+    assert.ok(calls.fills.has(band), `missing band ${band}`);
+  }
+  // The played half is dimmed; the part still to come stays bright.
+  assert.ok(calls.fills.has('rgba(0,0,0,0.58)'), 'played region should be dimmed');
 });

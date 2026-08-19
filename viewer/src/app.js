@@ -443,7 +443,9 @@ function renderDeck(deck, lanes = null) {
     deck.bpm === null ? '--.--' : deck.bpm.toFixed(2));
   const pitchRead = el('div', 'pitch-read mono',
     `${deck.pitch >= 0 ? '+' : ''}${deck.pitch.toFixed(1)}%`);
-  tempo.append(bpmRead, pitchRead);
+  const readouts = el('div', 'tempo-readouts');
+  readouts.append(bpmRead, pitchRead);
+  tempo.append(readouts);
 
   const fader = el('input', 'fader');
   fader.type = 'range';
@@ -697,10 +699,16 @@ function renderSaveBar() {
     save.textContent = 'Saving…';
     try {
       const route = await saveEdits(state.db, editor);
-      status({
-        'database': 'Saved exportLibrary.db. Copy it into PIONEER/rekordbox/ on the device, replacing the original.',
-        'changeset': 'Saved onelibrary-edits.json. Apply it with: onelibrary apply onelibrary-edits.json /Volumes/YOURUSB',
-      }[route], 'ok');
+      if (route === 'cancelled') {
+        status('Save cancelled.');
+      } else {
+        status({
+          picked: 'Saved. If you wrote over PIONEER/rekordbox/exportLibrary.db the device is up to date.',
+          database: 'Saved exportLibrary.db. Copy it into PIONEER/rekordbox/ on the device, replacing the original.',
+          changeset: 'Saved onelibrary-edits.json. Apply it with: onelibrary apply onelibrary-edits.json /Volumes/YOURUSB',
+        }[route], 'ok');
+        if (route === 'picked') { editor.clear(); render(); }
+      }
     } catch (err) {
       status(
         err?.code === 'declined'

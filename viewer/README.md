@@ -76,12 +76,13 @@ vertical line — which is what makes the phase difference between two tracks
 visible. Each deck has artwork, elapsed and remaining time, CUE and play, hot
 cue pads A–H, a pitch fader with ±6/10/16/100% ranges, and BEAT SYNC.
 
-**BEAT SYNC matches tempo *and* phase.** Matching BPM alone leaves two tracks
-running at the same speed but out of step. After the tempo is set, the deck
-moves to the nearer beat boundary and takes on the other deck's position within
-its beat, so the transients land together — and the correction is always under
-half a beat, so sync never lurches. If the tempo difference is beyond the pitch
-range it says so rather than doing nothing.
+**BEAT SYNC aligns the bar, not just the tempo.** Matching BPM leaves two
+tracks at the same speed but out of step; matching the *beat* is still not
+enough, because landing on the right beat but the wrong beat of the bar puts a
+snare where a kick should be. Sync therefore matches tempo, then aligns
+position within the four-beat bar, choosing whichever candidate bar is nearest
+so the correction stays under half a bar. If the tempo difference is beyond the
+pitch range it says so rather than doing nothing.
 
 | Control | |
 |---|---|
@@ -95,7 +96,17 @@ range it says so rather than doing nothing.
 ## Waveforms
 
 The colour waveform is drawn as three bands from the `PWV5` data — bass, mid
-and highs — painted widest first so they read as one shape.
+and highs.
+
+The **scrolling view** mirrors around a centre line with the bands overlaid,
+widest first. Its beatgrid reads from the edges, as on a CDJ: a tick above and
+below each beat rather than a line through the waveform, with downbeats in red
+carrying a full-height line.
+
+The **overview** follows rekordbox instead: it rises from a baseline rather
+than mirroring, stacks the bands (bass at the bottom, highs on top) rather than
+overlaying them, and dims what has already played — what is left to play is
+what a DJ is reading, so that stays bright.
 
 Two details make it behave like a DJ display rather than a plot:
 

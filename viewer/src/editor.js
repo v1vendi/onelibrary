@@ -174,11 +174,13 @@ export function exportChangeSet(db, editor) {
  *
  * - `changeset` — the published artifact, whose download allowlist has no
  *   `.db` extension: save JSON for `onelibrary apply`.
- * - `database`  — anywhere else: download the rebuilt database.
+ * - `picked`    — a Save dialog, so the file can go straight over the original.
+ * - `database`  — no picker available: download it.
+ * - `cancelled` — the viewer dismissed the dialog.
  *
- * @returns {Promise<'changeset'|'database'>}
+ * @returns {Promise<'changeset'|'picked'|'database'|'cancelled'>}
  */
-export async function saveEdits(db, editor, passphrase) {
+export async function saveEdits(db, editor, passphrase, startInHandle = null) {
   let downloads = null;
   try {
     downloads = (await globalThis.claude?.use?.('downloads')) ?? null;
@@ -194,6 +196,29 @@ export async function saveEdits(db, editor, passphrase) {
   }
 
   const bytes = await buildEditedDatabase(db, editor, passphrase);
+
+  // A Save dialog lets the file go straight back onto the device, over the
+  // original. `startIn` takes a handle when the page has one — dropping a
+  // folder does not provide one, so the dialog opens wherever it last was and
+  // the name is pre-filled to match what it replaces.
+  if (typeof globalThis.showSaveFilePicker === 'function') {
+    try {
+      const handle = await globalThis.showSaveFilePicker({
+        suggestedName: 'exportLibrary.db',
+        startIn: startInHandle ?? undefined,
+        types: [{ description: 'OneLibrary database', accept: { 'application/octet-stream': ['.db'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(bytes);
+      await writable.close();
+      return 'picked';
+    } catch (err) {
+      if (err?.name === 'AbortError') return 'cancelled';
+      // Anything else (a sandboxed frame, a blocked picker) falls through to
+      // the plain download rather than losing the edit.
+    }
+  }
+
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
   const a = document.createElement('a');
   a.href = url;
