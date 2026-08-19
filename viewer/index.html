@@ -241,6 +241,14 @@ button.dbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 button.dbtn.play { min-width: 44px; font-size: var(--fs-body); }
 button.dbtn.cue { color: var(--memory); border-color: color-mix(in srgb, var(--memory) 45%, transparent); }
 button.dbtn.sync { margin-left: auto; }
+/* Latched, so it has to look latched. */
+button.dbtn.sync.on {
+  background: var(--accent); color: var(--on-accent); border-color: var(--accent);
+}
+:root[data-skin="classic"] button.dbtn.sync.on {
+  background: #000; color: var(--phosphor);
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+}
 
 .tempo { display: flex; align-items: center; gap: 6px; }
 .bpm-read {

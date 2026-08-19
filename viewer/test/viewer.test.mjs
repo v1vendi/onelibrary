@@ -394,8 +394,9 @@ function fakeDeck(id, bpm, beatCount = 64, startMs = 0) {
   d.pitch = 0;
   d.range = 6;
   d.cuePointMs = 0;
+  d.syncOn = false;
   d.listeners = new Set();
-  d.player = { audio: { playbackRate: 1, pause() {} } };
+  d.player = { playing: false, audio: { playbackRate: 1, pause() {} } };
   const beatMs = 60000 / bpm;
   d.track = { bpmx100: Math.round(bpm * 100), length: 300 };
   d.anlz = {
@@ -581,4 +582,57 @@ test('the overview stacks bands from a baseline rather than mirroring', () => {
   }
   // The played half is dimmed; the part still to come stays bright.
   assert.ok(calls.fills.has('rgba(0,0,0,0.58)'), 'played region should be dimmed');
+});
+
+// -- sync as a latch --------------------------------------------------------
+
+test('sync engages and releases', () => {
+  const a = fakeDeck('A', 128), b = fakeDeck('B', 124);
+  assert.equal(b.syncOn, false);
+  assert.equal(b.enableSync(a), null);
+  assert.equal(b.syncOn, true);
+  b.disableSync();
+  assert.equal(b.syncOn, false);
+});
+
+test('a refused sync does not latch', () => {
+  const a = fakeDeck('A', 128), b = fakeDeck('B', 94.4);
+  b.setRange(6);
+  assert.match(b.enableSync(a), /beyond/);
+  assert.equal(b.syncOn, false, 'a sync that could not happen must not latch');
+});
+
+test('releasing restores the deck to its own fader', () => {
+  const a = fakeDeck('A', 128), b = fakeDeck('B', 124);
+  b.enableSync(a);
+  b.player.audio.playbackRate = 1.007;   // as a nudge would leave it
+  b.disableSync();
+  assert.equal(b.player.audio.playbackRate, b.baseRate);
+});
+
+test('a locked deck keeps following the master tempo', () => {
+  const a = fakeDeck('A', 128), b = fakeDeck('B', 124);
+  b.setRange(16);
+  b.enableSync(a);
+  a.setPitch(2);                          // master fader moves
+  b.player.playing = false;
+  b.holdSync(a);
+  assert.ok(Math.abs(b.bpm - a.bpm) < 0.01, `${b.bpm} should track ${a.bpm}`);
+});
+
+test('holding is inert when either deck is stopped', () => {
+  const a = fakeDeck('A', 128), b = fakeDeck('B', 124);
+  b.setRange(16);
+  b.enableSync(a);
+  b.holdSync(a);
+  assert.equal(b.player.audio.playbackRate, b.baseRate,
+    'a stopped deck should sit at its plain rate, not a correction');
+});
+
+test('holdSync does nothing when not latched', () => {
+  const a = fakeDeck('A', 128), b = fakeDeck('B', 124);
+  b.player.audio.playbackRate = 1;
+  b.holdSync(a);
+  assert.equal(b.pitch, 0);
+  assert.equal(b.player.audio.playbackRate, 1);
 });

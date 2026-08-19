@@ -467,11 +467,27 @@ function renderDeck(deck, lanes = null) {
   tempo.append(ranges);
   bar.append(tempo);
 
-  const sync = button('dbtn sync', 'BEAT SYNC', `Match deck ${other.id}'s tempo`, () => {
-    const problem = deck.syncTo(other);
-    if (problem) status(`Deck ${deck.id} cannot sync: ${problem}`, 'error');
-    else { status(''); renderDecks(); }
-  });
+  // A latch, not a one-shot: while it is on the deck keeps following the other
+  // deck's tempo and stays held on its bar grid.
+  const sync = button(
+    'dbtn sync' + (deck.syncOn ? ' on' : ''),
+    'BEAT SYNC',
+    deck.syncOn ? 'Release the lock' : `Lock to deck ${other.id}`,
+    () => {
+      if (deck.syncOn) {
+        deck.disableSync();
+      } else {
+        // Only one deck follows; locking this one releases the other so they
+        // cannot chase each other.
+        if (other.syncOn) other.disableSync();
+        const problem = deck.enableSync(other);
+        if (problem) { status(`Deck ${deck.id} cannot sync: ${problem}`, 'error'); return; }
+        status('');
+      }
+      renderDecks();
+    }
+  );
+  sync.setAttribute('aria-pressed', String(deck.syncOn));
   if (!deck.loaded || !other.loaded || deckCount === 1) sync.disabled = true;
   if (deckCount === 2) bar.append(sync);
   panel.append(bar);
@@ -550,7 +566,9 @@ function markFocus() {
 function startDeckAnimation() {
   if (rafHandle) cancelAnimationFrame(rafHandle);
   const tick = () => {
-    for (const deck of Object.values(decks)) {
+    for (const [id, deck] of Object.entries(decks)) {
+      // A locked deck is held every frame, not only when SYNC was pressed.
+      if (deck.syncOn) deck.holdSync(decks[id === 'A' ? 'B' : 'A']);
       if (deck.player.playing) deck._redraw?.();
     }
     rafHandle = requestAnimationFrame(tick);

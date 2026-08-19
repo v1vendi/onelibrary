@@ -76,13 +76,26 @@ vertical line — which is what makes the phase difference between two tracks
 visible. Each deck has artwork, elapsed and remaining time, CUE and play, hot
 cue pads A–H, a pitch fader with ±6/10/16/100% ranges, and BEAT SYNC.
 
-**BEAT SYNC aligns the bar, not just the tempo.** Matching BPM leaves two
-tracks at the same speed but out of step; matching the *beat* is still not
-enough, because landing on the right beat but the wrong beat of the bar puts a
-snare where a kick should be. Sync therefore matches tempo, then aligns
-position within the four-beat bar, choosing whichever candidate bar is nearest
-so the correction stays under half a bar. If the tempo difference is beyond the
-pitch range it says so rather than doing nothing.
+**BEAT SYNC is a latch, and it aligns the bar.** Pressing it locks the deck to
+the other one; pressing again releases it. Only one deck follows at a time, so
+locking one releases the other rather than letting them chase each other.
+
+Alignment is on the bar, not the beat: matching BPM leaves two tracks at the
+same speed but out of step, and matching the *beat* still puts a snare where a
+kick should be if it lands on the wrong beat of the bar. Sync matches tempo,
+then aligns position within the four-beat bar, choosing whichever candidate bar
+is nearest so the correction stays under half a bar.
+
+While locked it keeps following — move the master's fader and the locked deck
+comes with it. Drift is corrected by bending the playback rate a fraction of a
+percent rather than by seeking, because a seek every few seconds is audible as
+a stutter and a tiny speed change is not. Only an error too large to walk back
+that way gets a jump. If the tempo difference is beyond the pitch range it says
+so rather than doing nothing.
+
+The lock holds to within about 1% of a bar in practice. `<audio>` playback-rate
+control is not sample-accurate, so this is a usable lock rather than a
+sample-locked one.
 
 | Control | |
 |---|---|

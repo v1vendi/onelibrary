@@ -12,6 +12,19 @@ import { Player } from './player.js';
 /** Pitch fader ranges a CDJ offers, in percent. */
 export const PITCH_RANGES = [6, 10, 16, 100];
 
+/**
+ * How hard a locked deck pulls itself back onto the grid.
+ *
+ * Drift is corrected by bending the playback rate rather than by seeking,
+ * because a seek every few seconds is audible as a stutter while a fraction of
+ * a percent of speed is not. The cap keeps the correction below what the ear
+ * reads as a pitch change; anything further out than an eighth of a bar is too
+ * far to walk back that way and gets a single jump instead.
+ */
+const NUDGE_GAIN = 0.15;
+const MAX_NUDGE = 0.01;
+const JUMP_THRESHOLD = 1 / 8;
+
 export class Deck {
   /** @param {string} id display label, "A" or "B" */
   constructor(id) {
@@ -25,6 +38,8 @@ export class Deck {
     this.range = 6;
     /** Where CUE returns to. Defaults to the first memory cue. */
     this.cuePointMs = 0;
+    /** While true this deck follows another and is held on its grid. */
+    this.syncOn = false;
     this.listeners = new Set();
     this.player.onChange(() => this.emit());
   }
@@ -191,6 +206,63 @@ export class Deck {
     this.player.seekMs(best);
     this.emit();
     return null;
+  }
+
+  /** Rate this deck runs at from its own fader, before any sync correction. */
+  get baseRate() {
+    return 1 + this.pitch / 100;
+  }
+
+  /** Engage the lock: align once, then hold via {@link holdSync}. */
+  enableSync(other) {
+    const problem = this.syncTo(other);
+    if (problem) return problem;
+    this.syncOn = true;
+    this.emit();
+    return null;
+  }
+
+  disableSync() {
+    this.syncOn = false;
+    this.player.audio.playbackRate = this.baseRate;
+    this.emit();
+  }
+
+  /**
+   * Hold the deck on the other's grid. Called every frame while locked.
+   *
+   * Tempo is re-followed continuously so moving the master's fader carries this
+   * deck with it. Phase is held by bending the rate a fraction of a percent
+   * toward alignment rather than by seeking, which would stutter; only an error
+   * too large to walk back that way gets a jump.
+   */
+  holdSync(other) {
+    if (!this.syncOn || !other?.loaded || !this.baseBpm || !other.bpm) return;
+
+    const needed = (other.bpm / this.baseBpm - 1) * 100;
+    if (Math.abs(needed) <= this.range) this.pitch = needed;
+
+    if (!this.player.playing || !other.player.playing) {
+      this.player.audio.playbackRate = this.baseRate;
+      return;
+    }
+
+    const mine = this.barPhaseAt();
+    const theirs = other.barPhaseAt();
+    if (!mine || !theirs) return;
+
+    const barMs = mine.barMs;
+    let errorMs = (theirs.barPhase - mine.barPhase) * barMs;
+    if (errorMs > barMs / 2) errorMs -= barMs;
+    if (errorMs < -barMs / 2) errorMs += barMs;
+
+    if (Math.abs(errorMs) > barMs * JUMP_THRESHOLD) {
+      this.player.seekMs(this.player.positionMs + errorMs);
+      this.player.audio.playbackRate = this.baseRate;
+      return;
+    }
+    const nudge = Math.max(-MAX_NUDGE, Math.min(MAX_NUDGE, (errorMs / 1000) * NUDGE_GAIN));
+    this.player.audio.playbackRate = this.baseRate * (1 + nudge);
   }
 
   unload() {

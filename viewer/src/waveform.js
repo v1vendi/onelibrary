@@ -35,8 +35,13 @@ function cueColor(cue) {
 /* Beatgrid markers, drawn at the edges rather than across the waveform. */
 const BEAT_TICK = '#8a8a8a';
 const BEAT_DOWN = '#e13b2b';
-const BEAT_DOWN_LINE = '#ffffff';
-const BEAT_TICK_SIZE = 5;
+const BEAT_LINE = 'rgba(190,190,190,0.5)';
+const BEAT_DOWN_LINE = 'rgba(255,255,255,0.95)';
+const BEAT_TICK_SIZE = 4;
+
+/** Target stroke pitch and gap for the scrolling view, in CSS pixels. */
+const TARGET_BAR_PX = 3;
+const BAR_GAP_PX = 1;
 
 /** A small triangle pointing into the canvas from edge `y`. */
 function tick(ctx, x, y, size, direction) {
@@ -92,7 +97,7 @@ function binColumns(cols, from, to, step) {
  * touching the peaks, which is why DJ software waveforms look full rather than
  * flat.
  */
-const DISPLAY_GAMMA = 0.6;
+const DISPLAY_GAMMA = 0.75;
 const shape = (height) => Math.pow(Math.max(0, height), DISPLAY_GAMMA);
 
 /**
@@ -218,16 +223,19 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
   if (!cols.length || !durationMs) return;
 
   const mid = h / 2;
-  const amp = h / 2 - 8;
+  const amp = h / 2 - 14;
   const colour = waveform.source === 'PWV5';
   const startMs = positionMs - windowMs / 2;
   const msToX = (ms) => ((ms - startMs) / windowMs) * w;
 
   const colsPerMs = cols.length / durationMs;
   const pxPerCol = w / (windowMs * colsPerMs);
-  // One bin per screen pixel at most; never finer than one source column.
-  const step = Math.max(1, Math.ceil(1 / pxPerCol));
+  // Aim for a stroke every few pixels with a gap between, rather than one bar
+  // per pixel. Contiguous bars merge into a solid block; separated strokes are
+  // what make the shape readable and give the waveform its texture.
+  const step = Math.max(1, Math.round(TARGET_BAR_PX / pxPerCol));
   const barW = Math.max(1, pxPerCol * step);
+  const strokeW = Math.max(1, barW - BAR_GAP_PX);
 
   const fromCol = Math.floor(startMs * colsPerMs) - step;
   const toCol = Math.ceil((startMs + windowMs) * colsPerMs) + step;
@@ -240,10 +248,8 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
     if (b.timeMs < startMs - 50 || b.timeMs > startMs + windowMs + 50) continue;
     const x = msToX(b.timeMs);
     const downbeat = b.beat === 1;
-    if (downbeat) {
-      ctx.fillStyle = BEAT_DOWN_LINE;
-      ctx.fillRect(x - 0.5, 0, 1.5, h);
-    }
+    ctx.fillStyle = downbeat ? BEAT_DOWN_LINE : BEAT_LINE;
+    ctx.fillRect(x - 0.5, 0, downbeat ? 1.5 : 1, h);
     ctx.fillStyle = downbeat ? BEAT_DOWN : BEAT_TICK;
     tick(ctx, x, 0, BEAT_TICK_SIZE, 1);
     tick(ctx, x, h, BEAT_TICK_SIZE, -1);
@@ -263,7 +269,7 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
     if (bin.index < 0) continue;
     const x = (bin.index / colsPerMs - startMs) / windowMs * w;
     if (x < -barW || x > w) continue;
-    drawBands(ctx, x, barW, mid, amp, bin, colour);
+    drawBands(ctx, x, strokeW, mid, amp, bin, colour);
   }
 
   for (const c of cues) {
