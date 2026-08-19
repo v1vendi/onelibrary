@@ -87,11 +87,24 @@ are held as a change-set rather than applied in place, so setting a value back
 to its original removes it from the count rather than recording a no-op, and
 Discard is always exact.
 
-**Download edited database** rebuilds the whole file and re-encrypts it. Copy
-the result over `PIONEER/rekordbox/exportLibrary.db` on the device. Rebuilding
-rather than patching is deliberate: changing a rating from 0 to 5 changes its
-serial type from "constant zero" to "8-bit integer", so the record grows and
-the page has to be laid out again regardless.
+**Save changes** takes one of two routes, because a local copy and the
+published page can do different things:
+
+- **Locally** it rebuilds the whole database, re-encrypts it, and downloads
+  `exportLibrary.db`. Copy that over `PIONEER/rekordbox/` on the device.
+  Rebuilding rather than patching is deliberate: changing a rating from 0 to 5
+  changes its serial type from "constant zero" to "8-bit integer", so the
+  record grows and the page has to be laid out again regardless.
+- **In the published artifact** the download allowlist has no `.db` extension,
+  so it saves `onelibrary-edits.json` instead. Apply it with the Python CLI:
+
+  ```bash
+  onelibrary apply onelibrary-edits.json /Volumes/YOURUSB
+  ```
+
+  The change-set records the value the browser saw alongside the new one, so
+  `apply` refuses any field the device has changed since — pass `--force` to
+  override.
 
 The output is verified by `PRAGMA integrity_check` and
 `PRAGMA cipher_integrity_check` in SQLCipher itself, not just by reading it

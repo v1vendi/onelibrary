@@ -7,7 +7,12 @@ import json
 import sys
 from pathlib import Path
 
-from onelibrary.db import EXPORT_DB_RELPATH, NotEncryptedError, OneLibraryDB
+from onelibrary.db import (
+    EXPORT_DB_RELPATH,
+    NotEncryptedError,
+    OneLibraryDB,
+    open_encrypted,
+)
 from onelibrary.keys import KeyResolutionError, find_rekordbox_binaries, resolve_key
 
 
@@ -66,6 +71,100 @@ def cmd_dump(args) -> int:
     return 0
 
 
+def cmd_apply(args) -> int:
+    """Apply a change-set produced by the browser viewer."""
+    import json
+
+    changeset = json.loads(Path(args.changeset).read_text())
+    if changeset.get("format") != "onelibrary-changeset":
+        print(f"error: {args.changeset} is not a OneLibrary change-set", file=sys.stderr)
+        return 1
+
+    #: Editable names as the viewer reports them, mapped to their columns.
+    LOOKUPS = {
+        "artist": ("artist", "artist_id", "artist_id_artist"),
+        "album": ("album", "album_id", "album_id"),
+        "genre": ("genre", "genre_id", "genre_id"),
+    }
+
+    path = Path(args.device)
+    if path.is_dir():
+        path = path / EXPORT_DB_RELPATH
+    key = resolve_key(args.key, validate_against=path)
+    conn = open_encrypted(path, key, read_only=False)
+
+    applied = skipped = 0
+    for edit in changeset.get("edits", []):
+        cid = edit["content_id"]
+        for field, change in edit["fields"].items():
+            expected, value = change.get("from"), change.get("to")
+            if field in LOOKUPS:
+                table, id_col, fk = LOOKUPS[field]
+                current_name = conn.execute(
+                    f'SELECT l.name FROM content c LEFT JOIN "{table}" l '
+                    f"ON l.{id_col} = c.{fk} WHERE c.content_id = ?", (cid,)
+                ).fetchone()
+                current = current_name[0] if current_name else None
+            else:
+                row = conn.execute(
+                    f'SELECT "{field}" FROM content WHERE content_id = ?', (cid,)
+                ).fetchone()
+                current = row[0] if row else None
+
+            # Refuse to clobber a field that moved on the device since the edit.
+            if not args.force and (current or None) != (expected or None):
+                print(
+                    f"  skip content {cid}.{field}: device has {current!r}, "
+                    f"change-set expected {expected!r}",
+                    file=sys.stderr,
+                )
+                skipped += 1
+                continue
+
+            if field in LOOKUPS:
+                table, id_col, fk = LOOKUPS[field]
+                new_id = None
+                if value:
+                    found = conn.execute(
+                        f'SELECT {id_col} FROM "{table}" WHERE name = ?', (value,)
+                    ).fetchone()
+                    if found:
+                        new_id = found[0]
+                    else:
+                        new_id = (
+                            conn.execute(f'SELECT COALESCE(MAX({id_col}),0) FROM "{table}"')
+                            .fetchone()[0] + 1
+                        )
+                        cols = [c[1] for c in conn.execute(f'PRAGMA table_info("{table}")')]
+                        values = {id_col: new_id, "name": value}
+                        if "nameForSearch" in cols:
+                            values["nameForSearch"] = value.upper()
+                        placeholders = ",".join("?" for _ in values)
+                        conn.execute(
+                            f'INSERT INTO "{table}" ({",".join(values)}) VALUES ({placeholders})',
+                            tuple(values.values()),
+                        )
+                conn.execute(
+                    f"UPDATE content SET {fk} = ? WHERE content_id = ?", (new_id, cid)
+                )
+            elif field == "title":
+                conn.execute(
+                    "UPDATE content SET title = ?, titleForSearch = ? WHERE content_id = ?",
+                    (value, (value or "").upper() or None, cid),
+                )
+            else:
+                conn.execute(
+                    f'UPDATE content SET "{field}" = ? WHERE content_id = ?', (value, cid)
+                )
+            applied += 1
+
+    conn.commit()
+    conn.close()
+    print(f"applied {applied} change{'' if applied == 1 else 's'}", end="")
+    print(f", skipped {skipped}" if skipped else "")
+    return 1 if skipped and not args.force else 0
+
+
 def cmd_key(args) -> int:
     """Report how the passphrase would be resolved, without printing it."""
     bins = find_rekordbox_binaries()
@@ -109,6 +208,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--table")
     p.add_argument("--limit", type=int)
     p.set_defaults(func=cmd_dump)
+
+    p = sub.add_parser("apply", help="apply a change-set from the browser viewer")
+    p.add_argument("changeset", help="onelibrary-edits.json")
+    p.add_argument("device", help="mounted device root, or exportLibrary.db")
+    p.add_argument(
+        "--force", action="store_true",
+        help="apply even where the device no longer holds the expected value",
+    )
+    p.set_defaults(func=cmd_apply)
 
     p = sub.add_parser("key", help="show how the passphrase resolves")
     p.add_argument("device", nargs="?")

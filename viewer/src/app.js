@@ -10,7 +10,7 @@ import { SQLiteDatabase } from './sqlite.js';
 import { parseAnlz } from './anlz.js';
 import { drawOverview, drawDetail, TRACK_COLORS } from './waveform.js';
 import { Player, fmtPosition } from './player.js';
-import { Editor, EDITABLE, buildEditedDatabase, downloadDatabase } from './editor.js';
+import { Editor, EDITABLE, saveEdits } from './editor.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -542,24 +542,29 @@ function renderSaveBar() {
        `${n} change${n === 1 ? '' : 's'} on ${tracks} track${tracks === 1 ? '' : 's'}`)
   );
 
-  const save = el('button', 'save', 'Download edited database');
+  const save = el('button', 'save', 'Save changes');
   save.onclick = async () => {
     save.disabled = true;
-    save.textContent = 'Building…';
+    save.textContent = 'Saving…';
     try {
       const key = $('#key').value.trim() || undefined;
-      const bytes = await buildEditedDatabase(state.db, editor, key);
-      downloadDatabase(bytes);
+      const route = await saveEdits(state.db, editor, key);
       status(
-        'Saved exportLibrary.db. Copy it to PIONEER/rekordbox/ on the device, ' +
-        'replacing the original.',
+        route === 'database'
+          ? 'Saved exportLibrary.db. Copy it into PIONEER/rekordbox/ on the device, replacing the original.'
+          : 'Saved onelibrary-edits.json. Apply it with: onelibrary apply onelibrary-edits.json /Volumes/YOURUSB',
         'ok'
       );
     } catch (err) {
-      status(`Could not build the database: ${err.message}`, 'error');
+      status(
+        err?.code === 'declined'
+          ? 'Save cancelled.'
+          : `Could not save: ${err?.message || err}`,
+        err?.code === 'declined' ? 'info' : 'error'
+      );
     } finally {
       save.disabled = false;
-      save.textContent = 'Download edited database';
+      save.textContent = 'Save changes';
     }
   };
   bar.append(save);

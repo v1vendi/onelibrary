@@ -141,14 +141,58 @@ function collectIndexes(db) {
   return out;
 }
 
-/** Hand the edited database to the user as a download. */
-export function downloadDatabase(bytes, filename = 'exportLibrary.db') {
+/**
+ * The change-set as JSON, for applying with the Python CLI.
+ *
+ * Carries the original value alongside the new one so `onelibrary apply` can
+ * refuse to overwrite a field that changed on the device since the edit was
+ * made, rather than silently clobbering it.
+ */
+export function exportChangeSet(db, editor) {
+  const content = db.select('content');
+  const byId = Object.fromEntries(content.map((r) => [r.content_id, r]));
+  const edits = [];
+  for (const [contentId, fields] of editor.changes) {
+    const row = byId[contentId];
+    const change = { content_id: contentId, title: row?.title ?? null, fields: {} };
+    for (const [field, value] of fields) {
+      change.fields[field] = { from: row?.[field] ?? null, to: value };
+    }
+    edits.push(change);
+  }
+  return JSON.stringify({ format: 'onelibrary-changeset', version: 1, edits }, null, 2);
+}
+
+/**
+ * Save the edited library.
+ *
+ * Two routes, because the published artifact and a local copy can do different
+ * things. In the artifact the viewer grants a `downloads` capability whose
+ * allowlist has no `.db` extension, so the change-set goes out as JSON to be
+ * applied with `onelibrary apply`. Running locally there is no such
+ * restriction and the rebuilt database itself is handed over directly.
+ *
+ * @returns {Promise<'database'|'changeset'>} which route was taken
+ */
+export async function saveEdits(db, editor, passphrase) {
+  const downloads = await globalThis.claude?.use?.('downloads').catch(() => null);
+
+  if (downloads) {
+    await downloads.save({
+      filename: 'onelibrary-edits.json',
+      data: exportChangeSet(db, editor),
+    });
+    return 'changeset';
+  }
+
+  const bytes = await buildEditedDatabase(db, editor, passphrase);
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = 'exportLibrary.db';
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return 'database';
 }
