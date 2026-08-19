@@ -210,20 +210,31 @@ A writer must emit these exactly as rekordbox declares them:
 This is consistent with `master.db`, which has its own (`djmdColor.Commnt`).
 **[VERIFIED]**
 
-### 4.5 Cue positions are stored eleven times over
+### 4.5 Cues are not in the database
 
-A single cue records its position in every one of these units:
+**This is the most important finding for anyone writing an implementation.**
 
-`inUsec`, `in150FramePerSec`, `inMpegFrameNumber`, `inMpegAbs`,
-`inDecodingStartFramePosition`, `inFileOffsetInBlock`,
-`inNumberOfSampleInBlock` — each with an `out*` counterpart for loops.
+rekordbox does not populate the `cue` table on export. A test export in which
+one track carried three hot cues, and another carried two memory cues plus a
+hot cue and a saved loop, had **zero rows** in `cue`. Every one of those cues
+was in the ANLZ files. **[VERIFIED]**
 
-The redundancy lets a player seek frame-accurately in any supported container
-without re-parsing the file: microseconds for display, 150 fps CD frames, MPEG
-frame numbers, and byte offsets into the decoded stream. A writer must keep
-them mutually consistent. **[UNKNOWN]** which fields players actually read, and
-**[UNKNOWN]** the `kind` enum separating memory cues, hot cues and loops —
-resolving these needs the differential sequence in §5.
+The only trace in the database is `content.cueUpdateCount` — `7` on the two
+tracks with cues, `2` on a third, empty on the eight without. **[VERIFIED]**
+
+A writer that fills the `cue` table and stops produces a device with no cues on
+it. Cues must be written into ANLZ.
+
+The `cue` table is presumed to exist for the *player* to write into when a DJ
+saves cues on the hardware. **[UNKNOWN]** — untested, no hardware available.
+
+Note also that when populated, a cue's position is recorded in **eleven**
+different units: `inUsec`, `in150FramePerSec`, `inMpegFrameNumber`,
+`inMpegAbs`, `inDecodingStartFramePosition`, `inFileOffsetInBlock`,
+`inNumberOfSampleInBlock`, each with an `out*` counterpart for loops. The
+redundancy lets a player seek frame-accurately in any container without
+re-parsing the file. **[UNKNOWN]** which fields players read, and **[UNKNOWN]**
+the `kind` enum — neither can be resolved without a populated table.
 
 ### 4.6 Relationship to ANLZ
 
@@ -246,6 +257,31 @@ header-only — matching the empty `cue` table. The two representations agree.
 
 A complete writer must therefore emit ANLZ files as well as the database.
 crate-digger and pyrekordbox already document this format; reuse them.
+
+#### Cue encoding in ANLZ
+
+`PCOB` holds basic cues as `PCPT` entries; `PCO2` holds the extended form as
+`PCP2` entries, adding colour. Each file carries two of each — one list for
+memory cues, one for hot cues, discriminated by the section's `type` field
+(0 = memory, 1 = hot). **[VERIFIED]**
+
+| Field | Meaning |
+|---|---|
+| `hot` | `0` = memory cue; `1`–`8` = hot cue A–H |
+| `type` | `1` = cue point, `2` = loop |
+| `time` | position in **milliseconds** |
+| `loop_time` | loop end in ms; `0xFFFFFFFF` means "not a loop" |
+
+Decoded from a real export: a track with hot cues at 109 ms (A), 93,012 ms (C)
+and 116,238 ms (D); and another with memory cues at 0 ms and 19,363 ms, a hot
+cue A at 24,460 ms, and a hot cue C **loop** from 39,768 ms to 42,274 ms — a
+2,506 ms loop. **[VERIFIED]**
+
+**The `.DAT` and `.EXT` files disagree, by design.** `.DAT` carries only the
+hot cues older players understand; `.EXT` carries the full modern set. One
+observed track listed 2 hot cues in its `.DAT` and 3 in its `.EXT`. Read the
+`.EXT` when present; a writer must emit both, with the `.DAT` as the
+compatible subset. **[VERIFIED]**
 
 ## 5. Method
 
