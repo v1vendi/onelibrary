@@ -181,3 +181,55 @@ test('tolerates a missing sibling file', () => {
 test('throws when nothing is readable', () => {
   assert.throws(() => parseAnlz(null, null), /no readable ANLZ/);
 });
+
+// -- player -----------------------------------------------------------------
+//
+// The Player needs an <audio> element, so its cue-stepping logic is tested
+// through a small stand-in rather than by loading a DOM.
+
+import { Player, fmtPosition } from '../src/player.js';
+
+function cueStepper(cues, positionMs) {
+  const p = Object.create(Player.prototype);
+  p.cues = [...cues].sort((a, b) => a.timeMs - b.timeMs);
+  let pos = positionMs;
+  Object.defineProperty(p, 'positionMs', { get: () => pos });
+  p.seekMs = (ms) => { pos = ms; };
+  return p;
+}
+
+const CUES = [{ timeMs: 0 }, { timeMs: 19363 }, { timeMs: 24460 }, { timeMs: 39768 }];
+
+test('next cue walks forward and stops at the end', () => {
+  const p = cueStepper(CUES, 0);
+  assert.deepEqual([1, 2, 3, 4].map(() => p.jumpCue(1)?.timeMs ?? null), [19363, 24460, 39768, null]);
+});
+
+test('previous cue walks back and stops at the start', () => {
+  const p = cueStepper(CUES, 39768);
+  assert.deepEqual([1, 2, 3, 4].map(() => p.jumpCue(-1)?.timeMs ?? null), [24460, 19363, 0, null]);
+});
+
+test('previous returns to the cue just passed, not two back', () => {
+  // Regression: a wide grace window made this skip 24460 and land on 19363.
+  const p = cueStepper(CUES, 24560);
+  assert.equal(p.jumpCue(-1)?.timeMs, 24460);
+});
+
+test('previous from exactly on a cue steps to the one before', () => {
+  const p = cueStepper(CUES, 24460);
+  assert.equal(p.jumpCue(-1)?.timeMs, 19363);
+});
+
+test('cue stepping is a no-op with no cues', () => {
+  const p = cueStepper([], 1000);
+  assert.equal(p.jumpCue(1), null);
+  assert.equal(p.jumpCue(-1), null);
+});
+
+test('position formatting shows tenths', () => {
+  assert.equal(fmtPosition(0), '0:00.0');
+  assert.equal(fmtPosition(61500), '1:01.5');
+  assert.equal(fmtPosition(-5), '0:00.0');
+  assert.equal(fmtPosition(NaN), '0:00.0');
+});

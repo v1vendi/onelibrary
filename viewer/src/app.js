@@ -8,7 +8,8 @@
 import { decrypt, DecryptError, DEFAULT_KEY } from './sqlcipher.js';
 import { SQLiteDatabase } from './sqlite.js';
 import { parseAnlz } from './anlz.js';
-import { drawWaveform, TRACK_COLORS } from './waveform.js';
+import { drawOverview, drawDetail, TRACK_COLORS } from './waveform.js';
+import { Player, fmtPosition } from './player.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -24,7 +25,12 @@ const state = {
   tracks: [],
   lookups: {},
   selected: null,
+  anlz: null,
+  zoomMs: 8000,
 };
+
+const player = new Player();
+let rafHandle = null;
 
 // -- loading ---------------------------------------------------------------
 
@@ -266,6 +272,25 @@ async function anlzFor(track) {
   }
 }
 
+/** Locate the audio file for a track in the dropped device tree. */
+function audioFileFor(track) {
+  if (!track.path) return null;
+  const rel = track.path.replace(/^\//, '').toLowerCase();
+  return (
+    state.files.get(rel) ||
+    [...state.files].find(([k]) => k.endsWith(rel))?.[1] ||
+    null
+  );
+}
+
+function transportButton(label, title, onClick) {
+  const b = el('button', 'tbtn', label);
+  b.title = title;
+  b.setAttribute('aria-label', title);
+  b.onclick = onClick;
+  return b;
+}
+
 async function selectTrack(t) {
   state.selected = t;
   renderList();
@@ -275,19 +300,15 @@ async function selectTrack(t) {
 
   const f = trackFields(t);
   detail.append(el('h2', null, t.title || '(untitled)'));
-  // Labelled readouts rather than a run-on line: this panel is scanned, not read.
+
   const meta = el('div', 'meta');
-  const pairs = [
-    ['Artist', f.artist],
-    ['Album', f.album],
-    ['Genre', f.genre],
+  for (const [k, v] of [
+    ['Artist', f.artist], ['Album', f.album], ['Genre', f.genre],
     ['BPM', t.bpmx100 ? (t.bpmx100 / 100).toFixed(2) : ''],
-    ['Key', f.key],
-    ['Length', fmtTime(t.length)],
+    ['Key', f.key], ['Length', fmtTime(t.length)],
     ['Rating', t.rating ? '★'.repeat(t.rating) : ''],
     ['Bitrate', t.bitrate ? `${t.bitrate} kbps` : ''],
-  ];
-  for (const [k, v] of pairs) {
+  ]) {
     if (!v) continue;
     const item = el('span');
     item.append(el('span', 'label', k + ' '));
@@ -296,20 +317,111 @@ async function selectTrack(t) {
   }
   detail.append(meta);
 
-  const canvas = el('canvas', 'wave');
-  detail.append(canvas);
+  const overview = el('canvas', 'wave overview');
+  const detailCanvas = el('canvas', 'wave detail');
+  detail.append(detailCanvas);
+  detail.append(overview);
+
+  const transport = el('div', 'transport');
+  detail.append(transport);
   const legend = el('div', 'legend');
   detail.append(legend);
   if (t.path) detail.append(el('div', 'path', t.path));
 
   const anlz = await anlzFor(t);
+  state.anlz = anlz;
+  const durationFallback = (t.length || 0) * 1000;
+
   if (!anlz) {
     legend.textContent = 'No analysis file loaded for this track.';
-    drawWaveform(canvas, { columns: [] });
     return;
   }
-  drawWaveform(canvas, anlz.waveform, anlz.cues, anlz.beats, (t.length || 0) * 1000);
 
+  const audio = audioFileFor(t);
+  const hasAudio = player.load(audio, anlz.cues);
+
+  const duration = () => player.durationMs || durationFallback;
+  const redraw = () => {
+    const pos = player.positionMs;
+    drawDetail(detailCanvas, anlz.waveform, anlz.cues, anlz.beats, duration(), pos, state.zoomMs);
+    drawOverview(overview, anlz.waveform, anlz.cues, duration(), pos);
+  };
+
+  // --- transport ---------------------------------------------------------
+  const playBtn = transportButton('▶', 'Play or pause (space)', () => player.toggle());
+  transport.append(transportButton('⏮', 'Previous cue (left arrow)', () => player.jumpCue(-1)));
+  transport.append(playBtn);
+  transport.append(transportButton('⏭', 'Next cue (right arrow)', () => player.jumpCue(1)));
+
+  const clock = el('span', 'clock mono', '0:00.0');
+  transport.append(clock);
+  transport.append(el('span', 'clock-total mono', `/ ${fmtTime(t.length)}`));
+
+  const zoom = el('div', 'zoom');
+  zoom.append(el('span', 'label', 'Zoom'));
+  for (const [ms, name] of [[4000, '4s'], [8000, '8s'], [16000, '16s'], [32000, '32s']]) {
+    const b = el('button', 'zbtn' + (state.zoomMs === ms ? ' on' : ''), name);
+    b.onclick = () => {
+      state.zoomMs = ms;
+      for (const other of zoom.querySelectorAll('.zbtn')) other.classList.remove('on');
+      b.classList.add('on');
+      redraw();
+    };
+    zoom.append(b);
+  }
+  transport.append(zoom);
+
+  if (!hasAudio) {
+    transport.append(
+      el('span', 'nowav', 'no audio on this device — waveform and cues only')
+    );
+    for (const b of transport.querySelectorAll('.tbtn')) b.disabled = true;
+  }
+
+  // --- interaction -------------------------------------------------------
+  const seekFromOverview = (ev) => {
+    const r = overview.getBoundingClientRect();
+    player.seekMs(((ev.clientX - r.left) / r.width) * duration());
+    redraw();
+  };
+  overview.onpointerdown = (ev) => {
+    overview.setPointerCapture(ev.pointerId);
+    seekFromOverview(ev);
+    overview.onpointermove = (m) => m.buttons && seekFromOverview(m);
+  };
+  overview.onpointerup = () => { overview.onpointermove = null; };
+
+  // Dragging the detail view scrubs, at the zoom level currently shown.
+  detailCanvas.onpointerdown = (ev) => {
+    detailCanvas.setPointerCapture(ev.pointerId);
+    let lastX = ev.clientX;
+    detailCanvas.onpointermove = (m) => {
+      if (!m.buttons) return;
+      const dx = m.clientX - lastX;
+      lastX = m.clientX;
+      player.seekMs(player.positionMs - (dx / detailCanvas.clientWidth) * state.zoomMs);
+      redraw();
+    };
+  };
+  detailCanvas.onpointerup = () => { detailCanvas.onpointermove = null; };
+
+  player.onChange(() => {
+    playBtn.textContent = player.playing ? '⏸' : '▶';
+    clock.textContent = fmtPosition(player.positionMs);
+    redraw();
+  });
+
+  if (rafHandle) cancelAnimationFrame(rafHandle);
+  const tick = () => {
+    if (player.playing) {
+      clock.textContent = fmtPosition(player.positionMs);
+      redraw();
+    }
+    rafHandle = requestAnimationFrame(tick);
+  };
+  tick();
+
+  // --- legend ------------------------------------------------------------
   const hot = anlz.cues.filter((c) => !c.isMemory);
   const mem = anlz.cues.filter((c) => c.isMemory);
   const loops = anlz.cues.filter((c) => c.loopEndMs);
@@ -320,8 +432,8 @@ async function selectTrack(t) {
   legend.append(el('span', 'chip', `${anlz.beats.length} beats`));
   legend.append(el('span', 'chip', anlz.waveform.source || 'no waveform'));
 
-  window.onresize = () =>
-    drawWaveform(canvas, anlz.waveform, anlz.cues, anlz.beats, (t.length || 0) * 1000);
+  redraw();
+  window.onresize = redraw;
 }
 
 function render() {
@@ -355,5 +467,15 @@ export function init() {
 
   // Public API: drive the viewer without a drag-and-drop gesture. `files` maps
   // lowercase device-relative paths to File or Blob objects.
-  window.OneLibraryViewer = { load, selectTrack, state };
+  // Transport shortcuts. Ignored while typing in the passphrase field.
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, textarea')) return;
+    if (e.key === ' ') { e.preventDefault(); player.toggle(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); player.jumpCue(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); player.jumpCue(1); }
+  });
+
+  // Public API: drive the viewer without a drag-and-drop gesture. `files` maps
+  // lowercase device-relative paths to File or Blob objects.
+  window.OneLibraryViewer = { load, selectTrack, state, player };
 }

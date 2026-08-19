@@ -124,3 +124,150 @@ export function drawWaveform(canvas, waveform, cues = [], beats = [], durationMs
     ctx.fillText(label, x, 7);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Playback views
+   --------------------------------------------------------------------------- */
+
+/** Set up a canvas for CSS-pixel drawing at device resolution. */
+function prepare(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 800;
+  const h = canvas.clientHeight || 100;
+  canvas.width = Math.floor(w * dpr);
+  canvas.height = Math.floor(h * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+
+function cueColor(cue) {
+  return cue.isMemory ? MEMORY_CUE_COLOR : HOT_CUE_COLOR;
+}
+
+/**
+ * The whole track at a glance, with a playhead.
+ *
+ * This is the overview strip: it never scrolls, so a click maps linearly to a
+ * position and the player can be scrubbed by dragging across it.
+ */
+export function drawOverview(canvas, waveform, cues, durationMs, positionMs) {
+  const { ctx, w, h } = prepare(canvas);
+  const cols = waveform?.columns || [];
+  if (!cols.length) return;
+  const mid = h / 2;
+  const amp = h / 2 - 4;
+
+  for (const c of cues) {
+    if (!c.loopEndMs || !durationMs) continue;
+    ctx.fillStyle = LOOP_FILL;
+    const x1 = (c.timeMs / durationMs) * w;
+    const x2 = (c.loopEndMs / durationMs) * w;
+    ctx.fillRect(x1, 0, Math.max(2, x2 - x1), h);
+  }
+
+  const per = cols.length / w;
+  for (let px = 0; px < w; px++) {
+    const a = Math.floor(px * per);
+    const b = Math.max(a + 1, Math.floor((px + 1) * per));
+    let peak = 0, pick = cols[a];
+    for (let i = a; i < b && i < cols.length; i++) {
+      if (cols[i].height > peak) { peak = cols[i].height; pick = cols[i]; }
+    }
+    if (!pick) continue;
+    const played = durationMs && (px / w) * durationMs < positionMs;
+    ctx.fillStyle = columnColor(pick);
+    ctx.globalAlpha = played ? 1 : 0.4;
+    const y = Math.max(1, peak * amp);
+    ctx.fillRect(px, mid - y, 1, y * 2);
+  }
+  ctx.globalAlpha = 1;
+
+  for (const c of cues) {
+    if (!durationMs) continue;
+    const x = (c.timeMs / durationMs) * w;
+    ctx.fillStyle = cueColor(c);
+    ctx.fillRect(x - 1, 0, 2, h);
+  }
+
+  if (durationMs) {
+    const x = (positionMs / durationMs) * w;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x - 1, 0, 2, h);
+  }
+}
+
+/**
+ * The zoomed, scrolling view — the one a DJ actually reads.
+ *
+ * The playhead is fixed at the centre and the waveform moves beneath it, which
+ * is how CDJs and rekordbox present playback: the eye stays in one place and
+ * upcoming material arrives from the right. Beat markers are drawn from the
+ * real beatgrid, with downbeats emphasised, so bar boundaries are visible.
+ *
+ * @param {number} windowMs how much time fits across the canvas
+ */
+export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs, windowMs = 8000) {
+  const { ctx, w, h } = prepare(canvas);
+  const cols = waveform?.columns || [];
+  if (!cols.length || !durationMs) return;
+
+  const mid = h / 2;
+  const amp = h / 2 - 6;
+  const startMs = positionMs - windowMs / 2;
+  const msToX = (ms) => ((ms - startMs) / windowMs) * w;
+  const colsPerMs = cols.length / durationMs;
+
+  // Beat grid behind everything.
+  for (const b of beats) {
+    if (b.timeMs < startMs - 50 || b.timeMs > startMs + windowMs + 50) continue;
+    const x = msToX(b.timeMs);
+    const downbeat = b.beat === 1;
+    ctx.fillStyle = downbeat ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.13)';
+    ctx.fillRect(x, downbeat ? 0 : h * 0.18, downbeat ? 1.5 : 1, downbeat ? h : h * 0.64);
+  }
+
+  for (const c of cues) {
+    if (!c.loopEndMs) continue;
+    const x1 = msToX(c.timeMs), x2 = msToX(c.loopEndMs);
+    if (x2 < 0 || x1 > w) continue;
+    ctx.fillStyle = LOOP_FILL;
+    ctx.fillRect(x1, 0, x2 - x1, h);
+  }
+
+  // One bar per pixel column, peak-picked within that pixel's time slice.
+  for (let px = 0; px < w; px++) {
+    const ms = startMs + (px / w) * windowMs;
+    if (ms < 0 || ms > durationMs) continue;
+    const a = Math.floor(ms * colsPerMs);
+    const b = Math.max(a + 1, Math.floor((startMs + ((px + 1) / w) * windowMs) * colsPerMs));
+    let peak = 0, pick = cols[a];
+    for (let i = a; i < b && i < cols.length; i++) {
+      if (cols[i]?.height > peak) { peak = cols[i].height; pick = cols[i]; }
+    }
+    if (!pick) continue;
+    ctx.fillStyle = columnColor(pick);
+    const y = Math.max(1, peak * amp);
+    ctx.fillRect(px, mid - y, 1, y * 2);
+  }
+
+  for (const c of cues) {
+    const x = msToX(c.timeMs);
+    if (x < -12 || x > w + 12) continue;
+    const color = cueColor(c);
+    ctx.fillStyle = color;
+    ctx.fillRect(x - 1, 0, 2, h);
+    const label = c.isMemory ? '◆' : c.hotLetter;
+    ctx.fillRect(x - 9, 0, 18, 15);
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 11px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, 8);
+  }
+
+  // Fixed centre playhead.
+  ctx.fillStyle = '#ff3b30';
+  ctx.fillRect(w / 2 - 1, 0, 2, h);
+}

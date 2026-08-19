@@ -210,11 +210,54 @@ td.swatch { width: 20px; }
   display: flex; flex-wrap: wrap; gap: 4px 12px;
 }
 #detail .meta .v { color: var(--ink); font-weight: 550; }
+/* Two views, as on a CDJ: a zoomed one that scrolls under a fixed playhead,
+   and a static overview strip showing the whole track. */
 canvas.wave {
-  width: 100%; height: 172px; display: block;
+  width: 100%; display: block;
   background: var(--screen);
-  border: 1px solid var(--screen-line); border-radius: 9px;
+  border: 1px solid var(--screen-line);
+  touch-action: none;
 }
+canvas.wave.detail   { height: 168px; border-radius: 9px 9px 0 0; cursor: grab; }
+canvas.wave.detail:active { cursor: grabbing; }
+canvas.wave.overview { height: 46px; border-top: 0; border-radius: 0 0 9px 9px; cursor: pointer; }
+
+/* --- transport ------------------------------------------------------------ */
+
+.transport {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 12px;
+}
+button.tbtn {
+  min-width: 42px; height: 32px; padding: 0 10px;
+  font-size: 14px; line-height: 1; cursor: pointer;
+  background: var(--sunken); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 7px;
+}
+button.tbtn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button.tbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.tbtn:disabled { opacity: .4; cursor: not-allowed; }
+.clock {
+  font-size: 16px; font-weight: 600; letter-spacing: .01em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  padding-left: 4px;
+}
+.clock-total {
+  font-size: 13px; color: var(--ink-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.zoom { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+button.zbtn {
+  padding: 4px 9px; font-size: 11px; cursor: pointer;
+  background: none; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+button.zbtn:hover { color: var(--ink); }
+button.zbtn.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.nowav { font-size: 12px; color: var(--ink-soft); }
 .legend { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
 .chip {
   font-size: 11px; font-weight: 550; padding: 3px 10px; border-radius: 999px;

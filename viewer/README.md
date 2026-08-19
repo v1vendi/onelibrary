@@ -24,6 +24,7 @@ WASM blob and no external fetches:
 | `src/sqlite.js` | A minimal read-only SQLite reader — b-trees, records, overflow pages |
 | `src/anlz.js` | ANLZ cues, beatgrid and waveforms |
 | `src/waveform.js` | Canvas rendering |
+| `src/player.js` | Playback and cue stepping |
 
 ### Decryption
 
@@ -60,6 +61,22 @@ height = (d >> 2) & 0x1f
 The three 3-bit fields above it are colour. Their channel order is *inferred,
 not confirmed* — the bits 15–13 field tracks overall loudness most closely in
 every track measured, which is bass-band behaviour, so it is rendered as blue.
+
+## Playback
+
+Drop the whole device and tracks play from their own files — no copying, no
+upload. The deck follows the CDJ convention: a zoomed view scrolls under a
+playhead fixed at the centre, with the beatgrid drawn from the real analysis
+and downbeats emphasised, over a static overview strip showing the whole track.
+
+| Control | |
+|---|---|
+| `space` | play / pause |
+| `←` `→` | previous / next cue |
+| click or drag the overview | seek |
+| drag the detail view | scrub at the current zoom |
+
+Zoom runs 4s–32s across the deck.
 
 ## Limitations
 
