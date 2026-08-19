@@ -1,0 +1,13 @@
+# Real captures contain the user's personal music metadata. Never commit.
+tests/corpus/
+*.db
+*.db-shm
+*.db-wal
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
