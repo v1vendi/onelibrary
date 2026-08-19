@@ -87,15 +87,13 @@ are held as a change-set rather than applied in place, so setting a value back
 to its original removes it from the count rather than recording a no-op, and
 Discard is always exact.
 
-**Save changes** takes whichever route the browser allows:
+**Save changes** produces a file; the database is replaced by hand. The page
+cannot write to the stick directly — the File System Access API only hands out
+a writable directory handle from a picker in a top-level document, and the
+published page runs in a sandboxed frame where that picker never opens.
 
-- **Open device…** (Chrome, Edge) grants a writable handle, and saving
-  **overwrites `exportLibrary.db` on the stick in place**. The previous
-  database is kept as `exportLibrary.db.bak` first, and the stale `-wal`/`-shm`
-  sidecars are removed so nothing replays over the new file. Dragging a folder
-  in cannot do this — drag-and-drop yields read-only handles.
-- **Otherwise** it downloads the rebuilt `exportLibrary.db` to copy over
-  `PIONEER/rekordbox/` yourself.
+- **Normally** it downloads the rebuilt `exportLibrary.db`. Copy that over
+  `PIONEER/rekordbox/` on the device, replacing the original.
 - **In the published artifact** the download allowlist has no `.db` extension,
   so it saves `onelibrary-edits.json` instead:
 
@@ -137,9 +135,8 @@ holds its edge in text while still reading as a phosphor display.
   device**, not just the database, or there are no waveforms.
 - Editing covers database fields only. Cues live in ANLZ and are not editable
   here.
-- Saving in place needs the File System Access API — Chrome or Edge, and not
-  inside the published artifact's frame. Elsewhere it falls back to a download
-  or a change-set.
+- Saving produces a file to copy over the original; the page cannot write to
+  the device in place.
 - Phrase analysis (`PSSI`) and the 3-band waveform (`PWV4`) are parsed but not
   yet displayed.
 

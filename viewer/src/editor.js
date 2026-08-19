@@ -164,81 +164,21 @@ export function exportChangeSet(db, editor) {
 }
 
 /**
- * Ask for a device folder the page is allowed to write to.
- *
- * A dropped folder yields read-only File objects, so saving in place needs a
- * directory handle obtained through a picker. Returns null where the API is
- * unavailable (Safari, Firefox, and sandboxed frames) or the viewer cancels.
- */
-export async function pickWritableDevice() {
-  if (typeof globalThis.showDirectoryPicker !== 'function') return null;
-  try {
-    return await globalThis.showDirectoryPicker({ mode: 'readwrite', id: 'onelibrary-device' });
-  } catch {
-    return null; // the viewer dismissed the picker
-  }
-}
-
-/** Walk to a nested file handle, creating nothing. */
-async function resolveFile(dirHandle, segments) {
-  let dir = dirHandle;
-  for (const part of segments.slice(0, -1)) {
-    dir = await dir.getDirectoryHandle(part);
-  }
-  return dir.getFileHandle(segments.at(-1));
-}
-
-/**
- * Overwrite `exportLibrary.db` on the device, in place.
- *
- * The original is copied to `exportLibrary.db.bak` first. This rewrites the
- * only copy of a DJ's library on a stick they are about to play from, so a
- * failed write halfway through must not be the end of it.
- */
-export async function saveInPlace(dirHandle, bytes) {
-  const segments = ['PIONEER', 'rekordbox', 'exportLibrary.db'];
-  const handle = await resolveFile(dirHandle, segments);
-
-  const rekordbox = await (await dirHandle.getDirectoryHandle('PIONEER'))
-    .getDirectoryHandle('rekordbox');
-  const original = await (await handle.getFile()).arrayBuffer();
-  const backup = await rekordbox.getFileHandle('exportLibrary.db.bak', { create: true });
-  const bw = await backup.createWritable();
-  await bw.write(original);
-  await bw.close();
-
-  const w = await handle.createWritable();
-  await w.write(bytes);
-  await w.close();
-
-  // rekordbox leaves a WAL beside the database; a stale one would replay over
-  // what was just written, so it goes once the new file is committed.
-  for (const sidecar of ['exportLibrary.db-wal', 'exportLibrary.db-shm']) {
-    try {
-      await rekordbox.removeEntry(sidecar);
-    } catch {
-      // absent already, which is the normal case
-    }
-  }
-}
-
-/**
  * Save the edited library, by whichever route this view supports.
  *
- * - `in-place`  — a writable device handle: overwrite the database directly.
+ * Writing back to the stick directly is not one of them. The File System
+ * Access API can only hand out a writable directory handle from a picker in a
+ * top-level document, and the published page runs in a sandboxed frame where
+ * that picker never opens — so saving produces a file and the database is
+ * replaced by hand.
+ *
  * - `changeset` — the published artifact, whose download allowlist has no
  *   `.db` extension: save JSON for `onelibrary apply`.
  * - `database`  — anywhere else: download the rebuilt database.
  *
- * @returns {Promise<'in-place'|'changeset'|'database'>}
+ * @returns {Promise<'changeset'|'database'>}
  */
-export async function saveEdits(db, editor, passphrase, deviceHandle = null) {
-  if (deviceHandle) {
-    const bytes = await buildEditedDatabase(db, editor, passphrase);
-    await saveInPlace(deviceHandle, bytes);
-    return 'in-place';
-  }
-
+export async function saveEdits(db, editor, passphrase) {
   let downloads = null;
   try {
     downloads = (await globalThis.claude?.use?.('downloads')) ?? null;

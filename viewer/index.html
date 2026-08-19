@@ -189,14 +189,11 @@ tbody tr.edited td.swatch { position: relative; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: .9em; background: var(--sunken); padding: 1px 5px; border-radius: 4px;
 }
-.actions { display: flex; gap: 10px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
 .pick {
-  display: inline-block; padding: 9px 20px; cursor: pointer; font: inherit;
+  display: inline-block; margin-top: 18px; padding: 9px 20px; cursor: pointer; font: inherit;
   background: var(--accent); color: var(--on-accent);
   border: 1px solid var(--accent); border-radius: 8px; font-weight: 600; font-size: 13px;
 }
-.pick.alt { background: var(--panel); color: var(--ink); border-color: var(--line); }
-#dropzone .hint { font-size: 12px; margin-top: 10px; }
 label.pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 label.pick input { position: absolute; opacity: 0; width: 0; height: 0; }
 #dropzone .note {
@@ -575,15 +572,10 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   <h2>Drop a rekordbox device here</h2>
   <p>Drag a USB stick or SD card onto this page to browse its tracks, playlists, cues and waveforms.</p>
   <p>Dropping just <code>exportLibrary.db</code> works too, but without the analysis files there are no waveforms.</p>
-  <div class="actions">
-    <button class="pick" id="open" type="button">Open device…</button>
-    <label class="pick alt">
-      Browse read-only
-      <input type="file" id="picker" webkitdirectory directory multiple>
-    </label>
-  </div>
-  <p class="hint">Opening the device lets edits be saved back to it in place.
-    Chrome and Edge only.</p>
+  <label class="pick">
+    Choose a folder
+    <input type="file" id="picker" webkitdirectory directory multiple>
+  </label>
   <p class="note">
     Nothing is uploaded. The database is decrypted here in the page using
     WebCrypto, and never leaves this machine.

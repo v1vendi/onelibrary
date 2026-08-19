@@ -10,7 +10,7 @@ import { SQLiteDatabase } from './sqlite.js';
 import { parseAnlz } from './anlz.js';
 import { drawOverview, drawDetail, TRACK_COLORS } from './waveform.js';
 import { Player, fmtPosition } from './player.js';
-import { Editor, EDITABLE, saveEdits, pickWritableDevice } from './editor.js';
+import { Editor, EDITABLE, saveEdits } from './editor.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -26,7 +26,6 @@ const state = {
   tracks: [],
   lookups: {},
   selected: null,
-  deviceHandle: null,
   anlz: null,
   zoomMs: 8000,
 };
@@ -542,19 +541,16 @@ function renderSaveBar() {
        `${n} change${n === 1 ? '' : 's'} on ${tracks} track${tracks === 1 ? '' : 's'}`)
   );
 
-  const save = el('button', 'save', state.deviceHandle ? 'Save to device' : 'Save changes');
+  const save = el('button', 'save', 'Save changes');
   save.onclick = async () => {
     save.disabled = true;
     save.textContent = 'Saving…';
     try {
-      const route = await saveEdits(state.db, editor, undefined, state.deviceHandle);
+      const route = await saveEdits(state.db, editor);
       status({
-        'in-place': 'Saved to the device. The previous database is kept as exportLibrary.db.bak.',
         'database': 'Saved exportLibrary.db. Copy it into PIONEER/rekordbox/ on the device, replacing the original.',
         'changeset': 'Saved onelibrary-edits.json. Apply it with: onelibrary apply onelibrary-edits.json /Volumes/YOURUSB',
       }[route], 'ok');
-      if (route === 'in-place') editor.clear();
-      render();
     } catch (err) {
       status(
         err?.code === 'declined'
@@ -564,7 +560,7 @@ function renderSaveBar() {
       );
     } finally {
       save.disabled = false;
-      save.textContent = state.deviceHandle ? 'Save to device' : 'Save changes';
+      save.textContent = 'Save changes';
     }
   };
   bar.append(save);
@@ -627,30 +623,7 @@ export function init() {
     for (const f of e.target.files) {
       out.set((f.webkitRelativePath || f.name).toLowerCase(), f);
     }
-    state.deviceHandle = null;   // a file input grants no write access
     await load(out);
-  });
-
-  // The directory picker is the only route that yields a writable handle, so
-  // it is what makes saving in place possible.
-  $('#open').addEventListener('click', async () => {
-    const handle = await pickWritableDevice();
-    if (!handle) {
-      status('Opening a device folder for saving needs Chrome or Edge. ' +
-             'Drag the folder in instead to browse it read-only.', 'info');
-      return;
-    }
-    status('Reading device…');
-    const files = new Map();
-    const walk = async (dir, prefix) => {
-      for await (const [name, entry] of dir.entries()) {
-        if (entry.kind === 'directory') await walk(entry, `${prefix}${name}/`);
-        else files.set((prefix + name).toLowerCase(), await entry.getFile());
-      }
-    };
-    await walk(handle, '');
-    state.deviceHandle = handle;
-    await load(files);
   });
 
   // Transport shortcuts, suppressed while a metadata field has focus so typing
