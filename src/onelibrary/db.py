@@ -14,7 +14,6 @@ against rekordbox 7 (build 2025-10-22); see ``spec/ONELIBRARY.md``.
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -93,7 +92,7 @@ class OneLibraryDB:
         self.path = path
         self.key = key or resolve_key(validate_against=path if path.exists() else None)
         self.conn = open_encrypted(path, self.key, read_only=read_only)
-        self.conn.row_factory = sqlite3.Row
+        self.conn.row_factory = _sqlcipher.Row
 
     # -- introspection ---------------------------------------------------
 
@@ -119,7 +118,7 @@ class OneLibraryDB:
     def row_count(self, table: str) -> int:
         return self.conn.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
 
-    def rows(self, table: str, limit: int | None = None) -> Iterator[sqlite3.Row]:
+    def rows(self, table: str, limit: int | None = None) -> Iterator:
         sql = f'SELECT * FROM "{table}"'
         if limit is not None:
             sql += f" LIMIT {int(limit)}"

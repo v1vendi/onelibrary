@@ -94,18 +94,29 @@ class PlaintextScan(Strategy):
     """Find passphrases stored unobfuscated.
 
     Works on older rekordbox 6 builds. Confirmed *not* to work on rekordbox 7.
+
+    A passphrase may sit inside a longer alphanumeric run, so every 64-char
+    window of each run is emitted, not just runs that are exactly 64 long.
+    Candidates are cheap to reject downstream by trial decryption.
     """
 
+    #: Runs longer than this are almost certainly encoded data, not a key.
+    MAX_RUN = 4096
+
     def __init__(self) -> None:
-        super().__init__("plaintext", "64-char alphanumeric runs stored in the clear")
+        super().__init__("plaintext", "64-char alphanumeric windows stored in the clear")
 
     def candidates(self, data: bytes) -> Iterator[str]:
         seen: set[str] = set()
-        for m in _KEY_RE.finditer(data):
-            s = m.group().decode("ascii")
-            if s not in seen:
-                seen.add(s)
-                yield s
+        for m in re.finditer(rb"[a-z0-9]{64,}", data):
+            run = m.group()
+            if len(run) > self.MAX_RUN:
+                continue
+            for i in range(len(run) - 63):
+                s = run[i : i + 64].decode("ascii")
+                if s not in seen:
+                    seen.add(s)
+                    yield s
 
 
 class SingleByteXorScan(Strategy):
