@@ -175,8 +175,8 @@ export class Deck {
     const target = other?.bpm;
     if (!target) return 'the other deck has no analysed BPM';
     const needed = (target / this.baseBpm - 1) * 100;
-    if (Math.abs(needed) > this.range) {
-      return `needs ${needed >= 0 ? '+' : ''}${needed.toFixed(1)}% — beyond ±${this.range}%`;
+    if (!this.widenRangeFor(needed)) {
+      return `needs ${needed >= 0 ? '+' : ''}${needed.toFixed(1)}%, past the widest fader`;
     }
     this.setPitch(needed);
 
@@ -205,6 +205,22 @@ export class Deck {
     this.player.seekMs(best);
     this.emit();
     return null;
+  }
+
+  /**
+   * Widen the fader to the narrowest range that can reach `percent`.
+   *
+   * A player refuses to sync past the selected range and leaves the DJ to
+   * change it by hand; here the range is a display choice rather than a
+   * constraint worth enforcing, so it is opened as far as the match needs.
+   * Returns false only when even the widest range cannot reach.
+   */
+  widenRangeFor(percent) {
+    const magnitude = Math.abs(percent);
+    const fits = PITCH_RANGES.find((r) => magnitude <= r);
+    if (fits === undefined) return false;
+    if (fits > this.range) this.range = fits;
+    return true;
   }
 
   /** Rate this deck runs at from its own fader, before any sync correction. */
@@ -239,7 +255,7 @@ export class Deck {
     if (!this.syncOn || !other?.loaded || !this.baseBpm || !other.bpm) return;
 
     const needed = (other.bpm / this.baseBpm - 1) * 100;
-    if (Math.abs(needed) <= this.range) this.pitch = needed;
+    if (this.widenRangeFor(needed)) this.pitch = needed;
 
     if (!this.player.playing || !other.player.playing) {
       this.player.setRate(this.baseRate);

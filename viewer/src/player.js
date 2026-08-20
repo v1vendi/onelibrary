@@ -47,9 +47,34 @@ export class Player {
     this._playing = false;
 
     if (this.ctx) {
+      // source -> low -> mid -> high -> gain -> out. Shelf/peak points follow
+      // the usual three-band DJ split: everything under ~220 Hz is "low",
+      // everything over ~3.2 kHz is "high", and the mid is a broad bell
+      // between them rather than a narrow notch.
+      this.low = this.ctx.createBiquadFilter();
+      this.low.type = 'lowshelf';
+      this.low.frequency.value = 220;
+      this.mid = this.ctx.createBiquadFilter();
+      this.mid.type = 'peaking';
+      this.mid.frequency.value = 1000;
+      this.mid.Q.value = 0.8;
+      this.high = this.ctx.createBiquadFilter();
+      this.high.type = 'highshelf';
+      this.high.frequency.value = 3200;
+      // Two gain stages in series, not one: the channel fader and the
+      // crossfader are independent controls, and folding them into a single
+      // node makes each one overwrite the other's setting.
       this.gain = this.ctx.createGain();
-      this.gain.connect(this.ctx.destination);
+      this.xfade = this.ctx.createGain();
+
+      this.low.connect(this.mid);
+      this.mid.connect(this.high);
+      this.high.connect(this.gain);
+      this.gain.connect(this.xfade);
+      this.xfade.connect(this.ctx.destination);
     }
+    this.volume = 1;
+    this.eq = { low: 0, mid: 0, high: 0 };
   }
 
   onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
@@ -98,7 +123,7 @@ export class Player {
     const source = this.ctx.createBufferSource();
     source.buffer = this.buffer;
     source.playbackRate.value = this.rate;
-    source.connect(this.gain);
+    source.connect(this.low);
 
     const when = at || this.ctx.currentTime;
     const from = Math.max(0, Math.min(this.offset, this.buffer.duration - 0.001));
@@ -142,6 +167,41 @@ export class Player {
   toggle() {
     if (!this.hasAudio) return;
     if (this._playing) this.pause(); else this.play();
+  }
+
+  /**
+   * Channel fader, 0 to 1.
+   *
+   * Ramped rather than assigned: a step change in gain is a discontinuity in
+   * the waveform, which is audible as a click.
+   */
+  setVolume(v) {
+    this.volume = Math.max(0, Math.min(1, v));
+    if (this.gain) {
+      this.gain.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.01);
+    }
+    this.emit();
+  }
+
+  /** Crossfader contribution for this channel, 0 to 1. */
+  setChannelGain(g) {
+    if (this.xfade) {
+      this.xfade.gain.setTargetAtTime(
+        Math.max(0, Math.min(1, g)), this.ctx.currentTime, 0.01
+      );
+    }
+  }
+
+  /**
+   * One EQ band, in decibels. A killed band is -26 dB rather than -Infinity:
+   * inaudible, but it keeps the filter numerically well behaved.
+   */
+  setEq(band, db) {
+    const clamped = Math.max(-26, Math.min(12, db));
+    this.eq[band] = clamped;
+    const node = this[band];
+    if (node) node.gain.setTargetAtTime(clamped, this.ctx.currentTime, 0.01);
+    this.emit();
   }
 
   /** Seek exactly. Restarting the source is what keeps it sample-accurate. */

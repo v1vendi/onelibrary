@@ -424,13 +424,30 @@ test('tempo sync sets the pitch that matches BPM', () => {
   assert.ok(Math.abs(b.bpm - 128) < 0.01, `expected 128, got ${b.bpm}`);
 });
 
-test('sync refuses when the pitch range cannot reach', () => {
+test('sync widens the fader instead of refusing', () => {
+  // 94.4 -> 128 BPM needs +35.6%, far past the ±6% the fader starts on.
   const a = fakeDeck('A', 128);
   const b = fakeDeck('B', 94.4);
   b.setRange(6);
-  const problem = b.syncTo(a);
-  assert.match(problem, /beyond ±6%/);
-  assert.equal(b.pitch, 0, 'a refused sync must not move the fader');
+  assert.equal(b.syncTo(a), null);
+  assert.equal(b.range, 100, 'the range should open to the narrowest that fits');
+  assert.ok(Math.abs(b.bpm - 128) < 0.01, `expected 128 BPM, got ${b.bpm}`);
+});
+
+test('sync picks the narrowest range that reaches', () => {
+  const a = fakeDeck('A', 128);
+  const b = fakeDeck('B', 120);   // +6.67%, so ±10 is enough
+  b.setRange(6);
+  assert.equal(b.syncTo(a), null);
+  assert.equal(b.range, 10);
+});
+
+test('an already-wide range is left alone', () => {
+  const a = fakeDeck('A', 122);
+  const b = fakeDeck('B', 120);   // +1.67%, well inside ±16
+  b.setRange(16);
+  assert.equal(b.syncTo(a), null);
+  assert.equal(b.range, 16, 'the range should not narrow on its own');
 });
 
 test('sync aligns the beat phase, not just the tempo', () => {
@@ -601,11 +618,13 @@ test('sync engages and releases', () => {
   assert.equal(b.syncOn, false);
 });
 
-test('a refused sync does not latch', () => {
-  const a = fakeDeck('A', 128), b = fakeDeck('B', 94.4);
-  b.setRange(6);
-  assert.match(b.enableSync(a), /beyond/);
-  assert.equal(b.syncOn, false, 'a sync that could not happen must not latch');
+test('sync still refuses past the widest fader', () => {
+  const a = fakeDeck('A', 300);
+  const b = fakeDeck('B', 60);    // +400%, beyond even ±100%
+  const problem = b.syncTo(a);
+  assert.match(problem, /past the widest fader/);
+  assert.equal(b.pitch, 0, 'a refused sync must not move the fader');
+  assert.equal(b.syncOn, false, 'and must not latch');
 });
 
 test('releasing restores the deck to its own fader', () => {
@@ -691,4 +710,102 @@ test('peakBetween clamps outside the track', () => {
 
 test('peakBetween tolerates a missing envelope', () => {
   assert.deepEqual(peakBetween(null, 0, 100), { min: 0, max: 0 });
+});
+
+// -- MIDI -------------------------------------------------------------------
+//
+// Message decoding is tested directly: the mapping comes from rekordbox's own
+// controller definition, so the thing worth pinning is that bytes off the wire
+// reach the right deck with the right value.
+
+import { MidiController } from '../src/midi.js';
+
+function recorder() {
+  const calls = [];
+  const record = (name) => (...args) => calls.push([name, ...args]);
+  const c = new MidiController({
+    playPause: record('playPause'), cue: record('cue'), sync: record('sync'),
+    hotCue: record('hotCue'), tempo: record('tempo'), eqLow: record('eqLow'),
+    crossfader: record('crossfader'), channelFader: record('channelFader'),
+    loadA: record('loadA'), loadB: record('loadB'), browse: record('browse'),
+    jogBend: record('jogBend'),
+  });
+  return { c, calls };
+}
+
+test('the deck is the MIDI channel', () => {
+  const { c, calls } = recorder();
+  c.onMessage([0x90, 0x0b, 127]);   // play, channel 0
+  c.onMessage([0x91, 0x0b, 127]);   // play, channel 1
+  assert.deepEqual(calls.map((x) => x[1]), ['A', 'B']);
+});
+
+test('note-off and zero velocity do not fire buttons', () => {
+  const { c, calls } = recorder();
+  c.onMessage([0x80, 0x0b, 0]);
+  c.onMessage([0x90, 0x0b, 0]);
+  assert.equal(calls.length, 0);
+});
+
+test('pads map to hot cues on their own channels', () => {
+  const { c, calls } = recorder();
+  c.onMessage([0x97, 0x00, 127]);   // channel 7, pad 1 -> deck A hot cue A
+  c.onMessage([0x99, 0x03, 127]);   // channel 9, pad 4 -> deck B hot cue D
+  assert.deepEqual(calls, [['hotCue', 'A', 'A'], ['hotCue', 'B', 'D']]);
+});
+
+test('a 14-bit fader resolves finer than its MSB alone', () => {
+  const { c, calls } = recorder();
+  c.onMessage([0xb0, 0x00, 64]);          // tempo MSB
+  c.onMessage([0xb0, 0x20, 127]);         // its LSB, on controller + 32
+  const [, , coarse] = calls[0];
+  const [, , fine] = calls[1];
+  assert.ok(Math.abs(coarse - 64 / 127) < 1e-9);
+  assert.ok(fine > coarse, 'the pair must refine the MSB-only value');
+  assert.ok(Math.abs(fine - ((64 << 7) | 127) / 16383) < 1e-9);
+});
+
+test('an LSB with no preceding MSB is ignored', () => {
+  const { c, calls } = recorder();
+  c.onMessage([0xb0, 0x20, 100]);
+  assert.equal(calls.length, 0);
+});
+
+test('the mixer answers on channel 6, not a deck channel', () => {
+  const { c, calls } = recorder();
+  c.onMessage([0xb6, 0x1f, 127]);
+  c.onMessage([0x96, 0x46, 127]);
+  c.onMessage([0x96, 0x47, 127]);
+  assert.deepEqual(calls.map((x) => x[0]), ['crossfader', 'loadA', 'loadB']);
+});
+
+test('the browse encoder reports a signed delta around 0x40', () => {
+  const { c, calls } = recorder();
+  c.onMessage([0xb6, 0x40, 0x41]);
+  c.onMessage([0xb6, 0x40, 0x3f]);
+  assert.deepEqual(calls.map((x) => x[1]), [1, -1]);
+});
+
+test('the jog reports a signed delta per deck', () => {
+  const { c, calls } = recorder();
+  c.onMessage([0xb1, 0x23, 0x44]);
+  assert.deepEqual(calls[0], ['jogBend', 'B', 4]);
+});
+
+test('shift is tracked as a modifier, not dispatched', () => {
+  const { c, calls } = recorder();
+  c.onMessage([0x90, 0x3f, 127]);
+  assert.equal(c.shift, true);
+  assert.equal(calls.length, 0);
+  c.onMessage([0x90, 0x0b, 127]);
+  assert.deepEqual(calls[0], ['playPause', 'A', true], 'shift should reach the handler');
+  c.onMessage([0x90, 0x3f, 0]);
+  assert.equal(c.shift, false);
+});
+
+test('unmapped messages are ignored', () => {
+  const { c, calls } = recorder();
+  c.onMessage([0x90, 0x77, 127]);
+  c.onMessage([0xe0, 0x00, 64]);
+  assert.equal(calls.length, 0);
 });

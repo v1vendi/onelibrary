@@ -12,6 +12,7 @@ import { drawOverview, drawDetail, TRACK_COLORS } from './waveform.js';
 import { fmtPosition } from './player.js';
 import { Deck, PITCH_RANGES } from './deck.js';
 import { Editor, EDITABLE, saveEdits } from './editor.js';
+import { MidiController } from './midi.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -29,6 +30,7 @@ const state = {
   selected: null,
   anlz: null,
   zoomMs: 8000,
+  crossfade: 0.5,
 };
 
 const decks = { A: new Deck('A'), B: new Deck('B') };
@@ -341,7 +343,15 @@ function renderDecks() {
   if (lanes) wrap.append(lanes);
 
   const row = el('div', 'deck-row');
-  for (const id of ids) row.append(renderDeck(decks[id], lanes));
+  if (deckCount === 2) {
+    // Deck, mixer, deck — the desk layout, so each channel strip sits beside
+    // the deck it controls.
+    row.append(renderDeck(decks.A, lanes), renderMixer(), renderDeck(decks.B, lanes));
+    applyCrossfade();
+  } else {
+    for (const id of ids) row.append(renderDeck(decks[id], lanes));
+    decks.A.player.setChannelGain(1);
+  }
   wrap.append(row);
   startDeckAnimation();
 }
@@ -436,8 +446,11 @@ function renderDeck(deck, lanes = null) {
   const playBtn = button('dbtn play', deck.player.playing ? '❚❚' : '▶',
     'Play or pause', () => deck.player.toggle());
   bar.append(cueBtn, playBtn);
+  panel.append(bar);
 
-  // Tempo: readout, fader, range, sync.
+  // Below the transport: pads take the left, the tempo column the right, so
+  // the fader and its readouts get room instead of being squeezed into a row.
+  const lower = el('div', 'deck-lower');
   const tempo = el('div', 'tempo');
   const bpmRead = el('div', 'bpm-read mono',
     deck.bpm === null ? '--.--' : deck.bpm.toFixed(2));
@@ -465,7 +478,6 @@ function renderDeck(deck, lanes = null) {
     ranges.append(b);
   }
   tempo.append(ranges);
-  bar.append(tempo);
 
   // A latch, not a one-shot: while it is on the deck keeps following the other
   // deck's tempo and stays held on its bar grid.
@@ -489,10 +501,11 @@ function renderDeck(deck, lanes = null) {
   );
   sync.setAttribute('aria-pressed', String(deck.syncOn));
   if (!deck.loaded || !other.loaded || deckCount === 1) sync.disabled = true;
-  if (deckCount === 2) bar.append(sync);
-  panel.append(bar);
+  if (deckCount === 2) tempo.append(sync);
 
   // -- hot cues ----------------------------------------------------------
+  // Two rows of four: A-D over E-H, which keeps the pads compact on the left
+  // rather than stretching a single row across the whole panel.
   const pads = el('div', 'pads');
   for (const letter of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
     const cue = deck.hotCues.find((c) => c.hotLetter === letter);
@@ -502,12 +515,13 @@ function renderDeck(deck, lanes = null) {
     pad.onclick = () => deck.jumpToHotCue(letter);
     pads.append(pad);
   }
-  panel.append(pads);
+  lower.append(pads, tempo);
+  panel.append(lower);
 
   // -- redraw wiring -----------------------------------------------------
   const redraw = () => {
     drawDetail(detail, deck.anlz?.waveform, deck.cues, deck.anlz?.beats ?? [],
-               deck.durationMs, deck.player.positionMs, state.zoomMs,
+               deck.durationMs, deck.player.positionMs, visibleWindowMs(deck),
                deck.player.envelope);
     drawOverview(overview, deck.anlz?.waveform, deck.cues,
                  deck.durationMs, deck.player.positionMs);
@@ -546,7 +560,7 @@ function renderDeck(deck, lanes = null) {
     detail.onpointermove = (m) => {
       if (!m.buttons) return;
       deck.player.seekMs(deck.player.positionMs -
-        ((m.clientX - lastX) / detail.clientWidth) * state.zoomMs);
+        ((m.clientX - lastX) / detail.clientWidth) * visibleWindowMs(deck));
       lastX = m.clientX;
       redraw();
     };
@@ -593,6 +607,204 @@ async function anlzFor(track) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Wire a DDJ-FLX4 to the decks.
+ *
+ * Continuous controls are mapped so the hardware's physical centre matches the
+ * software's neutral: an EQ knob at twelve o'clock is 0 dB, a tempo fader at
+ * centre is 0%. Jogs move the playhead by time rather than by beats, so a
+ * nudge behaves the same whatever the track's tempo.
+ */
+function createMidi() {
+  const controller = new MidiController({
+    onStatus: (name) => {
+      const btn = $('#midi');
+      if (!btn) return;
+      btn.classList.toggle('on', Boolean(name));
+      btn.textContent = name ? 'FLX4 connected' : 'Connect FLX4';
+    },
+    playPause: (id) => { decks[id].player.toggle(); renderDecks(); },
+    cue: (id) => { decks[id].cue(); renderDecks(); },
+    sync: (id) => {
+      const deck = decks[id];
+      const other = decks[id === 'A' ? 'B' : 'A'];
+      if (deck.syncOn) deck.disableSync();
+      else {
+        if (other.syncOn) other.disableSync();
+        const problem = deck.enableSync(other);
+        if (problem) { status(`Deck ${id} cannot sync: ${problem}`, 'error'); return; }
+      }
+      renderDecks();
+    },
+    hotCue: (id, letter) => decks[id].jumpToHotCue(letter),
+    loadA: () => state.selected && loadDeck('A', state.selected),
+    loadB: () => state.selected && loadDeck('B', state.selected),
+    tempo: (id, fraction) => {
+      // Fader centre is 0%; the ends are the deck's current range.
+      const deck = decks[id];
+      deck.setPitch((0.5 - fraction) * 2 * deck.range);
+      renderDecks();
+    },
+    channelFader: (id, fraction) => decks[id].player.setVolume(fraction),
+    crossfader: (fraction) => { state.crossfade = fraction; applyCrossfade(); },
+    eqLow: (id, f) => decks[id].player.setEq('low', eqDbFromKnob(f)),
+    eqMid: (id, f) => decks[id].player.setEq('mid', eqDbFromKnob(f)),
+    eqHigh: (id, f) => decks[id].player.setEq('high', eqDbFromKnob(f)),
+    jogBend: (id, delta) => decks[id].player.seekMs(decks[id].player.positionMs + delta * 4),
+    jogScratch: (id, delta) => decks[id].player.seekMs(decks[id].player.positionMs + delta * 12),
+    browse: (delta) => moveSelection(delta > 0 ? 1 : -1),
+  });
+  return controller;
+}
+
+/**
+ * Knob position to decibels.
+ *
+ * Centre detent is 0 dB. Below centre runs down to a kill at -26 dB and above
+ * it up to +12, which is the asymmetry a DJ mixer has: you cut far further
+ * than you boost.
+ */
+function eqDbFromKnob(fraction) {
+  return fraction >= 0.5 ? (fraction - 0.5) * 2 * 12 : (fraction - 0.5) * 2 * 26;
+}
+
+/** Step the highlighted track, for the browse encoder. */
+function moveSelection(step) {
+  const rows = visibleTracks();
+  if (!rows.length) return;
+  const at = rows.findIndex((t) => t.content_id === state.selected?.content_id);
+  const next = rows[Math.max(0, Math.min(rows.length - 1, (at < 0 ? 0 : at) + step))];
+  if (next) selectTrack(next);
+}
+
+/**
+ * A rotary EQ knob.
+ *
+ * Real mixers use rotaries here and a pointer round a dial reads faster than a
+ * slider when there are six of them side by side. Dragging is vertical because
+ * a knob that tracks horizontal movement fights the mouse on a narrow control;
+ * double-click returns it to centre.
+ */
+function knob(label, initialDb, onChange) {
+  const MIN = -26, MAX = 12;
+  const wrap = el('div', 'knob-wrap');
+  const dial = el('div', 'knob');
+  dial.tabIndex = 0;
+  dial.setAttribute('role', 'slider');
+  dial.setAttribute('aria-label', `${label} EQ`);
+  const pointer = el('div', 'knob-pointer');
+  dial.append(pointer);
+  const read = el('div', 'knob-read mono');
+
+  let db = initialDb;
+  const paint = () => {
+    // -26..+12 dB mapped across 270 degrees, with 0 dB straight up.
+    const frac = db >= 0 ? db / MAX : db / -MIN;
+    dial.style.setProperty('--angle', `${frac * 135}deg`);
+    read.textContent = db === 0 ? '0' : `${db > 0 ? '+' : ''}${db.toFixed(0)}`;
+    dial.setAttribute('aria-valuenow', db.toFixed(0));
+    dial.classList.toggle('killed', db <= MIN + 0.5);
+  };
+  const set = (next) => {
+    db = Math.max(MIN, Math.min(MAX, next));
+    paint();
+    onChange(db);
+  };
+
+  dial.onpointerdown = (ev) => {
+    dial.setPointerCapture(ev.pointerId);
+    let lastY = ev.clientY;
+    dial.onpointermove = (m) => {
+      if (!m.buttons) return;
+      set(db + (lastY - m.clientY) * 0.5);
+      lastY = m.clientY;
+    };
+  };
+  dial.onpointerup = () => { dial.onpointermove = null; };
+  dial.ondblclick = () => set(0);
+  dial.onkeydown = (ev) => {
+    const step = ev.shiftKey ? 6 : 1;
+    if (ev.key === 'ArrowUp') { ev.preventDefault(); set(db + step); }
+    else if (ev.key === 'ArrowDown') { ev.preventDefault(); set(db - step); }
+    else if (ev.key === 'Home') { ev.preventDefault(); set(0); }
+  };
+
+  paint();
+  wrap.append(dial, el('div', 'knob-label label', label), read);
+  return wrap;
+}
+
+/** One mixer channel: three EQ knobs over a vertical fader. */
+function mixerChannel(deck) {
+  const ch = el('div', 'channel');
+  ch.append(el('div', 'ch-id', deck.id));
+
+  const eq = el('div', 'eq');
+  for (const [band, label] of [['high', 'HI'], ['mid', 'MID'], ['low', 'LO']]) {
+    eq.append(knob(label, deck.player.eq[band], (db) => deck.player.setEq(band, db)));
+  }
+  ch.append(eq);
+
+  const fader = el('input', 'volume');
+  fader.type = 'range';
+  fader.min = '0'; fader.max = '1'; fader.step = '0.01';
+  fader.value = String(deck.player.volume);
+  fader.title = `Deck ${deck.id} level`;
+  fader.setAttribute('aria-label', `Deck ${deck.id} level`);
+  fader.oninput = () => deck.player.setVolume(Number(fader.value));
+  ch.append(fader);
+  return ch;
+}
+
+/** The mixer sits between the two decks, as it does on a real desk. */
+function renderMixer() {
+  const mixer = el('section', 'mixer bevel-out');
+  mixer.append(mixerChannel(decks.A));
+
+  const middle = el('div', 'mixer-mid');
+  middle.append(el('div', 'label', 'Crossfader'));
+  const xf = el('input', 'crossfader');
+  xf.type = 'range'; xf.min = '0'; xf.max = '1'; xf.step = '0.01';
+  xf.value = String(state.crossfade);
+  xf.setAttribute('aria-label', 'Crossfader');
+  xf.oninput = () => {
+    state.crossfade = Number(xf.value);
+    applyCrossfade();
+  };
+  xf.ondblclick = () => { state.crossfade = 0.5; xf.value = '0.5'; applyCrossfade(); };
+  middle.append(xf);
+  mixer.append(middle);
+
+  mixer.append(mixerChannel(decks.B));
+  return mixer;
+}
+
+/**
+ * Constant-power crossfade.
+ *
+ * A linear blend dips in the middle, because two uncorrelated signals at half
+ * amplitude sum to less than either at full. Taking the square root of each
+ * side keeps total power flat across the travel.
+ */
+function applyCrossfade() {
+  const x = state.crossfade;
+  decks.A.player.setChannelGain(Math.sqrt(1 - x));
+  decks.B.player.setChannelGain(Math.sqrt(x));
+}
+
+/**
+ * How much of a track's own timeline fills the deck's detail view.
+ *
+ * The zoom control is expressed in real seconds, not track seconds. A deck
+ * running fast covers more of its own timeline per second on screen, so the
+ * window is scaled by the playback rate — otherwise two decks locked to the
+ * same tempo would scroll at visibly different speeds, and their beat marks
+ * would drift apart on screen while the audio stayed together.
+ */
+function visibleWindowMs(deck) {
+  return state.zoomMs * (deck.player.rate || 1);
 }
 
 /** The editable metadata form for one track. */
@@ -839,6 +1051,16 @@ export function init() {
     }
     await load(out);
   });
+
+  const midiBtn = $('#midi');
+  if (midiBtn) {
+    const controller = createMidi();
+    midiBtn.onclick = async () => {
+      if (controller.connected) { controller.disconnect(); return; }
+      const problem = await controller.connect();
+      status(problem || `Connected to ${controller.deviceName}.`, problem ? 'error' : 'ok');
+    };
+  }
 
   // Transport shortcuts, suppressed while a metadata field has focus so typing
   // a title does not scrub the deck.
