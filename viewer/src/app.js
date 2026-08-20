@@ -758,26 +758,30 @@ function mixerChannel(deck) {
   return ch;
 }
 
-/** The mixer sits between the two decks, as it does on a real desk. */
+/**
+ * The mixer sits between the two decks, as it does on a real desk.
+ *
+ * The crossfader runs under both channel strips rather than beside them: it
+ * belongs to neither channel, and putting it in its own column made the mixer
+ * wider than the decks it separates.
+ */
 function renderMixer() {
   const mixer = el('section', 'mixer bevel-out');
-  mixer.append(mixerChannel(decks.A));
+  mixer.append(mixerChannel(decks.A), mixerChannel(decks.B));
 
-  const middle = el('div', 'mixer-mid');
-  middle.append(el('div', 'label', 'Crossfader'));
+  const cross = el('div', 'crossfade-row');
   const xf = el('input', 'crossfader');
   xf.type = 'range'; xf.min = '0'; xf.max = '1'; xf.step = '0.01';
   xf.value = String(state.crossfade);
+  xf.title = 'Crossfader — double-click to centre';
   xf.setAttribute('aria-label', 'Crossfader');
   xf.oninput = () => {
     state.crossfade = Number(xf.value);
     applyCrossfade();
   };
   xf.ondblclick = () => { state.crossfade = 0.5; xf.value = '0.5'; applyCrossfade(); };
-  middle.append(xf);
-  mixer.append(middle);
-
-  mixer.append(mixerChannel(decks.B));
+  cross.append(xf);
+  mixer.append(cross);
   return mixer;
 }
 

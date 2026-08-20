@@ -297,10 +297,13 @@ input.fader:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 /* --- mixer ---------------------------------------------------------------- */
 
 .mixer {
-  display: flex; gap: 14px; align-items: stretch; justify-content: center;
+  display: grid; grid-template-columns: auto auto; gap: 10px 14px;
+  justify-content: center; align-items: start;
   padding: 12px 14px; flex: none;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
 }
+/* The crossfader belongs to neither channel, so it runs under both. */
+.crossfade-row { grid-column: 1 / -1; display: flex; justify-content: center; }
 .channel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .ch-id {
   font-size: var(--fs-micro); font-weight: 700; letter-spacing: .18em;
@@ -340,11 +343,7 @@ input.volume {
 }
 input.volume:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.mixer-mid {
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: flex-end; gap: 6px; padding-bottom: 4px;
-}
-input.crossfader { width: 120px; accent-color: var(--accent); cursor: ew-resize; }
+input.crossfader { width: 100%; accent-color: var(--accent); cursor: ew-resize; }
 input.crossfader:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (max-width: 900px) {
