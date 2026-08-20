@@ -294,6 +294,16 @@ input.fader:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .tempo-readouts { display: flex; flex-direction: column; gap: 1px; }
 .ranges { flex-direction: column; }
 
+canvas.vis {
+  width: 76px; height: 38px; flex: none; align-self: center;
+  background: #000; border: 1px solid var(--line); border-radius: 3px;
+}
+:root[data-skin="classic"] canvas.vis {
+  border-radius: 0;
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+  border-style: solid; border-width: 1px;
+}
+
 /* --- mixer ---------------------------------------------------------------- */
 
 .mixer {
@@ -724,26 +734,38 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
    viewer's light/dark theme, painting every colour explicitly so it holds on
    either host ground.
 
-   One departure: Winamp's #00FF00 vibrates against black at text sizes, so the
-   phosphor here is very slightly pulled back.
+   Colours are no longer estimated. They are read from the 2.91 base skin
+   itself -- the palette of its bitmaps, and the plain-text colour configs it
+   ships -- so the phosphor is the real #00FF00 rather than a guess at it.
    =========================================================================== */
 
+/* Sampled from the Winamp 2.91 base skin's own files.
+   The chassis is not grey. MAIN.BMP is a vertical gradient through a dark,
+   desaturated blue-purple -- #181829 at the bottom to #39395A at the top --
+   and reading it as neutral grey is what made the earlier pass feel off.
+   PLEDIT.TXT gives the playlist colours outright: #00FF00 on #000000, the
+   selected row #0000C6, the playing row #FFFFFF. The cyan is the
+   active-window highlight from TITLEBAR.BMP. */
 :root[data-skin="classic"] {
-  --chassis:      #3f3f46;
-  --chassis-dark: #26262c;
-  --bevel-hi:     #7c7c88;
-  --bevel-lo:     #101014;
-  --phosphor:     #24e02c;
-  --phosphor-dim: #0f8a17;
-  --select:       #0f1d8c;
-  --titlebar:     #21212c;
+  --chassis:      #39395A;
+  --chassis-mid:  #2F2F4A;
+  --chassis-dark: #25253A;
+  --bevel-hi:     #4E4E78;
+  --bevel-lo:     #181829;
+  --shadow:       #0A0D16;
+  --phosphor:     #00FF00;
+  --phosphor-dim: #00A800;
+  --select:       #0000C6;
+  --current:      #FFFFFF;
+  --titlebar:     #2F2F44;
+  --title-glow:   #00C6FF;
 
   --ground:   var(--chassis-dark);
   --panel:    var(--chassis);
   --sunken:   #000000;
   --line:     var(--bevel-lo);
-  --ink:      #d2d2d8;
-  --ink-soft: #8f8f9c;
+  --ink:      #BFCDD3;
+  --ink-soft: #798A9E;
   --hot:      #22d3ee;
   --memory:   #ffa022;
   --accent:   var(--phosphor);
@@ -752,8 +774,19 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   --ok:       var(--phosphor);
   --err:      #ff6161;
   --screen:   #000000;
-  --screen-line: #2a2a32;
+  --screen-line: #181829;
 }
+
+/* Panels carry the chassis gradient rather than a flat fill, as the skin does. */
+:root[data-skin="classic"] .deck,
+:root[data-skin="classic"] .mixer,
+:root[data-skin="classic"] #detail,
+:root[data-skin="classic"] #sidebar {
+  background: linear-gradient(180deg,
+    var(--chassis) 0%, var(--chassis-mid) 55%, var(--chassis-dark) 100%);
+}
+:root[data-skin="classic"] tbody tr.sel td { color: var(--current); }
+:root[data-skin="classic"] header h1 b { color: var(--title-glow); }
 
 :root[data-skin="classic"] body {
   background: var(--chassis-dark);

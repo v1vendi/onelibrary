@@ -72,6 +72,14 @@ export class Player {
       this.high.connect(this.gain);
       this.gain.connect(this.xfade);
       this.xfade.connect(this.ctx.destination);
+
+      // Tapped after the crossfader so the visualiser shows what is actually
+      // audible, not what the deck would sound like on its own.
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 512;
+      this.analyser.smoothingTimeConstant = 0.75;
+      this.xfade.connect(this.analyser);
+      this.spectrum = new Uint8Array(this.analyser.frequencyBinCount);
     }
     this.volume = 1;
     this.eq = { low: 0, mid: 0, high: 0 };
@@ -253,6 +261,20 @@ export class Player {
     return target;
   }
 }
+
+/**
+ * Winamp's spectrum analyser ramp, from the base skin's VISCOLOR.TXT.
+ *
+ * Twenty-four entries: index 0 is the background, 1 the dotted grid, 2 to 17
+ * run the bar gradient from red at the peak down to green at the floor, and
+ * the rest colour the oscilloscope. Only the bar range is needed here.
+ */
+export const VIS_COLORS = [
+  [239, 49, 16], [206, 41, 16], [214, 90, 0], [214, 102, 0], [214, 115, 0],
+  [198, 123, 8], [222, 165, 24], [214, 181, 33], [189, 222, 41], [148, 222, 33],
+  [41, 206, 16], [50, 190, 16], [57, 181, 16], [49, 156, 8], [41, 148, 0],
+  [24, 132, 8],
+];
 
 /** `m:ss.d` — a DJ reads tenths, so they are shown. */
 export function fmtPosition(ms) {

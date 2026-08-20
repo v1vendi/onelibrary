@@ -8,8 +8,8 @@
 import { decrypt, DecryptError, DEFAULT_KEY } from './sqlcipher.js';
 import { SQLiteDatabase } from './sqlite.js';
 import { parseAnlz } from './anlz.js';
-import { drawOverview, drawDetail, TRACK_COLORS } from './waveform.js';
-import { fmtPosition } from './player.js';
+import { drawOverview, drawDetail, drawSpectrum, TRACK_COLORS } from './waveform.js';
+import { fmtPosition, VIS_COLORS } from './player.js';
 import { Deck, PITCH_RANGES } from './deck.js';
 import { Editor, EDITABLE, saveEdits } from './editor.js';
 import { MidiController } from './midi.js';
@@ -448,11 +448,16 @@ function renderDeck(deck, lanes = null) {
   }
   head.append(art);
 
+  const vis = el('canvas', 'vis');
+  vis.title = 'Spectrum';
+  const visPeaks = [];
+
   const ident = el('div', 'ident');
   const f = deck.track ? trackFields(deck.track) : {};
   ident.append(el('div', 'deck-title', deck.track?.title || 'No track loaded'));
   ident.append(el('div', 'deck-artist', f.artist || ''));
   head.append(ident);
+  head.append(vis);
 
   const clocks = el('div', 'clocks');
   const elapsed = el('div', 'clock mono', fmtPosition(deck.player.positionMs));
@@ -573,6 +578,12 @@ function renderDeck(deck, lanes = null) {
     bpmRead.textContent = deck.bpm === null ? '--.--' : deck.bpm.toFixed(2);
     pitchRead.textContent = `${deck.pitch >= 0 ? '+' : ''}${deck.pitch.toFixed(1)}%`;
     if (document.activeElement !== fader) fader.value = String(deck.pitch);
+    const analyser = deck.player.analyser;
+    if (analyser) {
+      if (deck.player.playing) analyser.getByteFrequencyData(deck.player.spectrum);
+      else deck.player.spectrum.fill(0);
+      drawSpectrum(vis, deck.player.spectrum, visPeaks, VIS_COLORS);
+    }
   };
   deck._redraw = redraw;
 

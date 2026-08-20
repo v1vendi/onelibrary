@@ -343,3 +343,59 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
   ctx.fillStyle = '#ff3b30';
   ctx.fillRect(w / 2 - 1, 0, 2, h);
 }
+
+
+/**
+ * Winamp's spectrum analyser.
+ *
+ * Nineteen bars, coloured top-down from the skin's own ramp so a bar's tip is
+ * red and its base green, with a peak dot that falls back slowly — the detail
+ * that makes the original read as responsive rather than twitchy.
+ *
+ * Bins are grouped logarithmically. An FFT spreads its bins evenly across
+ * frequency, so a linear grouping gives fifteen bars of treble nobody can hear
+ * moving and one bar holding the entire bass.
+ */
+const VIS_BARS = 19;
+const PEAK_FALL = 0.6;
+
+export function drawSpectrum(canvas, spectrum, peaks, colors) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 76;
+  const h = canvas.clientHeight || 38;
+  canvas.width = Math.floor(w * dpr);
+  canvas.height = Math.floor(h * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  if (!spectrum || !spectrum.length) return;
+
+  const barW = w / VIS_BARS;
+  const bins = spectrum.length;
+  for (let i = 0; i < VIS_BARS; i++) {
+    const from = Math.floor(bins ** (i / VIS_BARS)) - 1;
+    const to = Math.max(from + 1, Math.floor(bins ** ((i + 1) / VIS_BARS)) - 1);
+    let peak = 0;
+    for (let b = Math.max(0, from); b < Math.min(bins, to); b++) {
+      if (spectrum[b] > peak) peak = spectrum[b];
+    }
+    const value = peak / 255;
+    peaks[i] = Math.max(value, (peaks[i] ?? 0) - PEAK_FALL / 60);
+
+    const x = Math.floor(i * barW);
+    const bw = Math.max(1, Math.floor(barW) - 1);
+    const rows = Math.round(value * colors.length);
+    for (let r = 0; r < rows; r++) {
+      // Row 0 is the floor, so the ramp is indexed from its green end up.
+      const [cr, cg, cb] = colors[colors.length - 1 - r];
+      ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
+      const rowH = h / colors.length;
+      ctx.fillRect(x, h - (r + 1) * rowH, bw, Math.ceil(rowH) - 0.5);
+    }
+    if (peaks[i] > 0.02) {
+      ctx.fillStyle = 'rgb(150,150,150)';   // VISCOLOR entry 23
+      ctx.fillRect(x, h - peaks[i] * h - 1, bw, 1.5);
+    }
+  }
+}

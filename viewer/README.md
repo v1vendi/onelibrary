@@ -197,14 +197,30 @@ rather than a replacement — the toggle sits in the header and the choice
 persists.
 
 The classic skin is a **hand-built homage, not a port**. Real Winamp skins are
-bitmap sets owned by Nullsoft and its successors; nothing here is copied from
-them. The bevels, the backlit display and the playlist colours are rebuilt in
-CSS from the era's Win95 3D conventions. It deliberately commits to its own
-dark chassis rather than following the viewer's light/dark theme.
+bitmap sets owned by Nullsoft and its successors, and none of that artwork is
+copied or shipped here — every surface is drawn in CSS.
 
-One substantive departure: Winamp's display green was `#00FF00`, which vibrates
-badly against black at small sizes. This uses a slightly desaturated green that
-holds its edge in text while still reading as a phosphor display.
+The *colours*, though, are measured rather than guessed. They come from the
+2.91 base skin's own files: the palettes of its bitmaps, and the plain-text
+colour configs it carries.
+
+| Source | What it gave |
+|---|---|
+| `MAIN.BMP` palette | the chassis is **not grey** — a vertical gradient through a dark desaturated blue-purple, `#181829` up to `#39395A` |
+| `PLEDIT.TXT` | playlist text `#00FF00` on `#000000`, selected row `#0000C6`, playing row `#FFFFFF` |
+| `TITLEBAR.BMP` palette | the active-window cyan, `#00C6FF` |
+| `VISCOLOR.TXT` | the spectrum analyser's 16-step ramp, red at the peak down to green at the floor |
+
+Reading that chassis as neutral grey was what made an earlier pass feel
+subtly wrong. The skin commits to this one world rather than following the
+viewer's light/dark theme, painting every colour explicitly so it holds on
+either host ground.
+
+The spectrum analyser is driven by a real `AnalyserNode` tapped after the
+crossfader, so it shows what is audible rather than what one deck would sound
+like alone. Bars are grouped logarithmically — an FFT spreads its bins evenly
+across frequency, so a linear grouping gives fifteen bars of inaudible treble
+and one bar holding all the bass.
 
 ## Limitations
 
