@@ -760,6 +760,26 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   --titlebar:     #2F2F44;
   --title-glow:   #00C6FF;
 
+  /* Controls, sampled from CBUTTONS/SHUFREP/VOLUME/EQMAIN in the same skin.
+     Winamp's buttons are LIGHT steel-blue, not dark chassis -- that contrast
+     against the case is most of what makes the front panel read correctly. */
+  --btn-hi:       #EFFFFF;
+  --btn-top:      #BDCED6;
+  --btn-mid:      #ADB5C6;
+  --btn-bot:      #7B8C9C;
+  --btn-shadow:   #4A5A6B;
+  --btn-text:     #080810;
+  --btn-face:     linear-gradient(180deg, var(--btn-top) 0%, var(--btn-mid) 45%, var(--btn-bot) 100%);
+  /* Fader tracks are a lit green gradient, not a dark groove. */
+  --slider-hi:    #A4E238;
+  --slider-mid:   #71CD34;
+  --slider-lo:    #2A9A16;
+  --knob-hi:      #DAE7EA;
+  --knob-face:    #C8C5D3;
+  --knob-edge:    #8E8EA1;
+  --led-on:       #00FF00;
+  --led-off:      #1B3A1B;
+
   --ground:   var(--chassis-dark);
   --panel:    var(--chassis);
   --sunken:   #000000;
@@ -787,6 +807,22 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 }
 :root[data-skin="classic"] tbody tr.sel td { color: var(--current); }
 :root[data-skin="classic"] header h1 b { color: var(--title-glow); }
+
+/* Winamp's chrome is bitmap art, so edges are hard. Turning off text
+   antialiasing and snapping images to the pixel grid is what keeps drawn
+   surfaces from looking like a modern UI wearing old colours.
+   Row and type metrics (13px rows, 9px text, 0.5px tracking) are Webamp's,
+   which is MIT-licensed and models the original faithfully. */
+:root[data-skin="classic"] {
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+}
+:root[data-skin="classic"] img,
+:root[data-skin="classic"] canvas {
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: pixelated;
+}
 
 :root[data-skin="classic"] body {
   background: var(--chassis-dark);
@@ -974,6 +1010,180 @@ button.skin {
 button.skin:hover { color: var(--ink); }
 button.skin.on { color: var(--accent); border-color: var(--accent); }
 button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+
+/* ---------------------------------------------------------------------------
+   Classic controls
+   ---------------------------------------------------------------------------
+   Every button is a light steel plate on the dark case: a 1px #EFFFFF top-left
+   highlight, the face gradient, a #4A5A6B bottom-right shadow, and near-black
+   glyphs. Pressing inverts the bevel rather than tinting the fill, which is how
+   the original registers a click.
+   --------------------------------------------------------------------------- */
+
+:root[data-skin="classic"] button.tbtn,
+:root[data-skin="classic"] button.dbtn,
+:root[data-skin="classic"] button.zbtn,
+:root[data-skin="classic"] button.rbtn,
+:root[data-skin="classic"] button.pad,
+:root[data-skin="classic"] label.pick,
+:root[data-skin="classic"] button.skin,
+:root[data-skin="classic"] #savebar button {
+  background: var(--btn-face);
+  color: var(--btn-text);
+  border-radius: 0;
+  border-style: solid;
+  border-width: 1px;
+  border-color: var(--btn-hi) var(--btn-shadow) var(--btn-shadow) var(--btn-hi);
+  box-shadow: inset -1px -1px 0 rgba(74,90,107,.55), inset 1px 1px 0 rgba(255,255,255,.5);
+  text-shadow: none;
+  font-weight: 600;
+}
+:root[data-skin="classic"] button.tbtn:hover:not(:disabled),
+:root[data-skin="classic"] button.dbtn:hover:not(:disabled),
+:root[data-skin="classic"] button.pad:hover:not(:disabled) {
+  background: linear-gradient(180deg, #D2E1E8 0%, #BDC6D4 45%, #8C9BAA 100%);
+  color: var(--btn-text);
+}
+:root[data-skin="classic"] button.tbtn:active:not(:disabled),
+:root[data-skin="classic"] button.dbtn:active:not(:disabled),
+:root[data-skin="classic"] button.zbtn:active,
+:root[data-skin="classic"] button.pad:active:not(:disabled) {
+  border-color: var(--btn-shadow) var(--btn-hi) var(--btn-hi) var(--btn-shadow);
+  box-shadow: inset 1px 1px 0 rgba(74,90,107,.6);
+}
+:root[data-skin="classic"] button.tbtn:disabled,
+:root[data-skin="classic"] button.dbtn:disabled,
+:root[data-skin="classic"] button.pad:disabled {
+  background: linear-gradient(180deg, #8E97A4 0%, #7A8390 100%);
+  color: #4A5A6B; opacity: 1;
+}
+
+/* A selected state is the pressed bevel plus the phosphor, not a colour wash. */
+:root[data-skin="classic"] button.zbtn.on,
+:root[data-skin="classic"] button.rbtn.on {
+  background: #101018;
+  color: var(--phosphor);
+  border-color: var(--btn-shadow) var(--btn-hi) var(--btn-hi) var(--btn-shadow);
+  box-shadow: none;
+}
+
+/* Indicator lamp, as on SHUFFLE and REPEAT: a recessed square that lights. */
+:root[data-skin="classic"] button.sync {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+}
+:root[data-skin="classic"] button.sync::before {
+  content: '';
+  width: 8px; height: 8px; flex: none;
+  background: var(--led-off);
+  border: 1px solid var(--btn-shadow);
+  box-shadow: inset 1px 1px 0 rgba(0,0,0,.55);
+}
+:root[data-skin="classic"] button.sync.on::before {
+  background: var(--led-on);
+  box-shadow: 0 0 4px rgba(0,255,0,.75), inset 0 0 2px rgba(255,255,255,.6);
+}
+:root[data-skin="classic"] button.sync.on {
+  background: var(--btn-face);
+  color: var(--btn-text);
+  border-color: var(--btn-hi) var(--btn-shadow) var(--btn-shadow) var(--btn-hi);
+}
+
+/* Sliders: a lit green channel with a light grooved grip riding it. */
+:root[data-skin="classic"] input.fader::-webkit-slider-runnable-track,
+:root[data-skin="classic"] input.volume::-webkit-slider-runnable-track {
+  width: 9px;
+  background: linear-gradient(90deg, var(--slider-lo) 0%, var(--slider-hi) 45%, var(--slider-mid) 100%);
+  border-color: var(--shadow) var(--bevel-hi) var(--bevel-hi) var(--shadow);
+}
+:root[data-skin="classic"] input.crossfader::-webkit-slider-runnable-track {
+  height: 9px;
+  background: linear-gradient(180deg, var(--slider-lo) 0%, var(--slider-hi) 45%, var(--slider-mid) 100%);
+  border-color: var(--shadow) var(--bevel-hi) var(--bevel-hi) var(--shadow);
+}
+:root[data-skin="classic"] input.fader::-webkit-slider-thumb,
+:root[data-skin="classic"] input.volume::-webkit-slider-thumb,
+:root[data-skin="classic"] input.crossfader::-webkit-slider-thumb {
+  background:
+    linear-gradient(180deg, transparent 42%, var(--knob-edge) 42%, var(--knob-edge) 47%,
+                    transparent 47%, transparent 53%, var(--knob-edge) 53%,
+                    var(--knob-edge) 58%, transparent 58%),
+    linear-gradient(180deg, var(--knob-hi) 0%, var(--knob-face) 55%, var(--knob-edge) 100%);
+  border-color: var(--btn-hi) var(--btn-shadow) var(--btn-shadow) var(--btn-hi);
+}
+:root[data-skin="classic"] input.fader::-moz-range-track,
+:root[data-skin="classic"] input.volume::-moz-range-track {
+  width: 9px;
+  background: linear-gradient(90deg, var(--slider-lo), var(--slider-hi) 45%, var(--slider-mid));
+}
+:root[data-skin="classic"] input.crossfader::-moz-range-track {
+  height: 9px;
+  background: linear-gradient(180deg, var(--slider-lo), var(--slider-hi) 45%, var(--slider-mid));
+}
+:root[data-skin="classic"] input.fader::-moz-range-thumb,
+:root[data-skin="classic"] input.volume::-moz-range-thumb,
+:root[data-skin="classic"] input.crossfader::-moz-range-thumb {
+  background: linear-gradient(180deg, var(--knob-hi), var(--knob-face) 55%, var(--knob-edge));
+  border: 1px solid var(--btn-shadow);
+}
+
+/* EQ dials pick up the same plate finish as the buttons. */
+:root[data-skin="classic"] .knob {
+  background: radial-gradient(circle at 50% 28%, var(--knob-hi) 0%, var(--knob-face) 55%, var(--knob-edge) 100%);
+  border-color: var(--btn-shadow);
+  box-shadow: 0 0 0 1px var(--btn-hi) inset;
+}
+:root[data-skin="classic"] .knob-pointer { background: #101018; width: 3px; }
+:root[data-skin="classic"] .knob.killed .knob-pointer { background: #C01818; }
+
+/* Sections get the recessed frame the playlist window has: a dark inner well
+   inside a light outer edge. */
+:root[data-skin="classic"] .deck,
+:root[data-skin="classic"] .mixer,
+:root[data-skin="classic"] #detail {
+  border: 1px solid var(--bevel-hi);
+  outline: 1px solid var(--shadow);
+  outline-offset: -3px;
+  padding: 5px;
+}
+:root[data-skin="classic"] canvas.wave,
+:root[data-skin="classic"] canvas.vis,
+:root[data-skin="classic"] .clock {
+  border-color: var(--shadow) var(--bevel-hi) var(--bevel-hi) var(--shadow);
+  border-style: solid; border-width: 1px;
+}
+
+/* Playlist metrics from Webamp: 13px rows, 9px text, half-pixel tracking. */
+:root[data-skin="classic"] td {
+  height: 13px; line-height: 13px; padding: 0 6px;
+  font-size: 9px; letter-spacing: .5px;
+}
+:root[data-skin="classic"] th {
+  height: 13px; line-height: 13px; padding: 0 6px;
+  font-size: 9px; letter-spacing: .5px;
+}
+:root[data-skin="classic"] #content {
+  border: 1px solid var(--bevel-hi);
+  outline: 1px solid var(--shadow);
+  outline-offset: -3px;
+}
+
+/* Throbber: a recessed well with a phosphor block sweeping it, the way the
+   original shows work in progress rather than a spinning circle. */
+:root[data-skin="classic"] #status[data-kind="info"]::before {
+  content: '';
+  display: inline-block; vertical-align: middle;
+  width: 56px; height: 9px; margin-right: 8px;
+  background:
+    linear-gradient(90deg, var(--phosphor) 0 12px, transparent 12px) 0 0 / 56px 100% no-repeat,
+    #05070A;
+  border: 1px solid var(--shadow);
+  animation: throb 1.1s steps(11) infinite;
+}
+@keyframes throb { to { background-position: 44px 0, 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-skin="classic"] #status[data-kind="info"]::before { animation: none; }
+}
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>

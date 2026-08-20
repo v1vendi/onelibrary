@@ -210,6 +210,17 @@ colour configs it carries.
 | `PLEDIT.TXT` | playlist text `#00FF00` on `#000000`, selected row `#0000C6`, playing row `#FFFFFF` |
 | `TITLEBAR.BMP` palette | the active-window cyan, `#00C6FF` |
 | `VISCOLOR.TXT` | the spectrum analyser's 16-step ramp, red at the peak down to green at the floor |
+| `CBUTTONS.BMP` / `SHUFREP.BMP` | buttons are **light steel-blue**, `#BDCED6` down to `#7B8C9C`, with a `#EFFFFF` highlight and near-black glyphs |
+| `VOLUME.BMP` / `EQMAIN.BMP` | fader tracks are a lit green channel, `#A4E238` through `#2A9A16`, with a light grooved grip |
+
+Row and type metrics — 13px rows, 9px text, half-pixel tracking, and
+`image-rendering: pixelated` — come from [Webamp](https://github.com/captbaritone/webamp)
+(MIT), which models the original faithfully. Its CSS itself is sprite-slicing
+against the skin bitmaps, so none of it is copied; the measurements are.
+
+Text antialiasing is switched off in this skin. Winamp's chrome is bitmap art
+with hard edges, and smoothed type is most of what makes a reproduction look
+like a modern UI wearing old colours.
 
 Reading that chassis as neutral grey was what made an earlier pass feel
 subtly wrong. The skin commits to this one world rather than following the
