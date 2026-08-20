@@ -34,6 +34,46 @@ const state = {
 };
 
 const decks = { A: new Deck('A'), B: new Deck('B') };
+
+/**
+ * Coalesce redraws into one per animation frame.
+ *
+ * Deck changes are broadcast synchronously, and a dragged fader emits an input
+ * event far faster than the display refreshes -- so a canvas that redrew on
+ * each one ran the waveform several times per frame and tore. Work is queued
+ * here instead and flushed once per frame, which also means the many small
+ * changes a single gesture produces cost one redraw between them.
+ */
+let mixerUnsubscribe = [];
+const pendingRedraws = new Set();
+let redrawFrame = null;
+
+function scheduleRedraw(fn) {
+  pendingRedraws.add(fn);
+  if (redrawFrame !== null) return;
+  redrawFrame = requestAnimationFrame(() => {
+    redrawFrame = null;
+    const due = [...pendingRedraws];
+    pendingRedraws.clear();
+    for (const f of due) f();
+  });
+}
+
+/**
+ * Rebuild the deck DOM, at most once per frame.
+ *
+ * A rebuild replaces the controls, so doing it mid-gesture would tear the
+ * element out from under the pointer. Deferring to a frame boundary keeps a
+ * burst of changes to a single rebuild.
+ */
+let renderFrame = null;
+function scheduleRenderDecks() {
+  if (renderFrame !== null) return;
+  renderFrame = requestAnimationFrame(() => {
+    renderFrame = null;
+    renderDecks();
+  });
+}
 const editor = new Editor();
 let rafHandle = null;
 /** The deck a bare space/arrow keypress drives. */
@@ -541,7 +581,7 @@ function renderDeck(deck, lanes = null) {
   // needs its own refresh. Listeners are cleared first because renderDeck runs
   // again on every re-render and would otherwise stack one per pass.
   deck.listeners.clear();
-  deck.onChange(redraw);
+  deck.onChange(() => scheduleRedraw(redraw));
 
   const seek = (ev) => {
     const r = overview.getBoundingClientRect();
@@ -584,7 +624,10 @@ function startDeckAnimation() {
     for (const [id, deck] of Object.entries(decks)) {
       // A locked deck is held every frame, not only when SYNC was pressed.
       if (deck.syncOn) deck.holdSync(decks[id === 'A' ? 'B' : 'A']);
-      if (deck.player.playing) deck._redraw?.();
+      // Queued rather than called: a change emitted earlier this frame may
+      // already have scheduled this deck, and the queue is a set, so the two
+      // paths collapse into one draw instead of two.
+      if (deck.player.playing && deck._redraw) scheduleRedraw(deck._redraw);
     }
     rafHandle = requestAnimationFrame(tick);
   };
@@ -625,8 +668,8 @@ function createMidi() {
       btn.classList.toggle('on', Boolean(name));
       btn.textContent = name ? 'FLX4 connected' : 'Connect FLX4';
     },
-    playPause: (id) => { decks[id].player.toggle(); renderDecks(); },
-    cue: (id) => { decks[id].cue(); renderDecks(); },
+    playPause: (id) => { decks[id].player.toggle(); scheduleRenderDecks(); },
+    cue: (id) => { decks[id].cue(); scheduleRenderDecks(); },
     sync: (id) => {
       const deck = decks[id];
       const other = decks[id === 'A' ? 'B' : 'A'];
@@ -636,16 +679,18 @@ function createMidi() {
         const problem = deck.enableSync(other);
         if (problem) { status(`Deck ${id} cannot sync: ${problem}`, 'error'); return; }
       }
-      renderDecks();
+      scheduleRenderDecks();
     },
     hotCue: (id, letter) => decks[id].jumpToHotCue(letter),
     loadA: () => state.selected && loadDeck('A', state.selected),
     loadB: () => state.selected && loadDeck('B', state.selected),
     tempo: (id, fraction) => {
       // Fader centre is 0%; the ends are the deck's current range.
+      // A 14-bit fader emits far faster than the display refreshes, so the
+      // rebuild is deferred rather than run per message.
       const deck = decks[id];
       deck.setPitch((0.5 - fraction) * 2 * deck.range);
-      renderDecks();
+      scheduleRenderDecks();
     },
     channelFader: (id, fraction) => decks[id].player.setVolume(fraction),
     crossfader: (fraction) => { state.crossfade = fraction; applyCrossfade(); },
@@ -733,7 +778,17 @@ function knob(label, initialDb, onChange) {
 
   paint();
   wrap.append(dial, el('div', 'knob-label label', label), read);
-  return wrap;
+  // The dial has to be drivable from outside as well as by the pointer: MIDI
+  // moves the same value, and a control that only tracked its own events would
+  // sit still while the audio changed under it.
+  return {
+    el: wrap,
+    sync: (value) => {
+      if (document.activeElement === dial || value === db) return;
+      db = value;
+      paint();
+    },
+  };
 }
 
 /** One mixer channel: three EQ knobs over a vertical fader. */
@@ -742,8 +797,11 @@ function mixerChannel(deck) {
   ch.append(el('div', 'ch-id', deck.id));
 
   const eq = el('div', 'eq');
+  const knobs = [];
   for (const [band, label] of [['high', 'HI'], ['mid', 'MID'], ['low', 'LO']]) {
-    eq.append(knob(label, deck.player.eq[band], (db) => deck.player.setEq(band, db)));
+    const k = knob(label, deck.player.eq[band], (db) => deck.player.setEq(band, db));
+    knobs.push([band, k]);
+    eq.append(k.el);
   }
   ch.append(eq);
 
@@ -755,6 +813,15 @@ function mixerChannel(deck) {
   fader.setAttribute('aria-label', `Deck ${deck.id} level`);
   fader.oninput = () => deck.player.setVolume(Number(fader.value));
   ch.append(fader);
+
+  // Follow the player rather than only the pointer, so a controller moving the
+  // same value is reflected here. The element being dragged is left alone: a
+  // fader that rewrote itself under the pointer would fight the gesture.
+  const refresh = () => {
+    if (document.activeElement !== fader) fader.value = String(deck.player.volume);
+    for (const [band, k] of knobs) k.sync(deck.player.eq[band]);
+  };
+  mixerUnsubscribe.push(deck.player.onChange(() => scheduleRedraw(refresh)));
   return ch;
 }
 
@@ -766,6 +833,11 @@ function mixerChannel(deck) {
  * wider than the decks it separates.
  */
 function renderMixer() {
+  // Listeners are dropped first: renderMixer runs again on every rebuild and
+  // would otherwise stack one subscription per pass.
+  for (const off of mixerUnsubscribe) off();
+  mixerUnsubscribe = [];
+
   const mixer = el('section', 'mixer bevel-out');
   mixer.append(mixerChannel(decks.A), mixerChannel(decks.B));
 
@@ -782,6 +854,10 @@ function renderMixer() {
   xf.ondblclick = () => { state.crossfade = 0.5; xf.value = '0.5'; applyCrossfade(); };
   cross.append(xf);
   mixer.append(cross);
+
+  state.syncCrossfader = () => {
+    if (document.activeElement !== xf) xf.value = String(state.crossfade);
+  };
   return mixer;
 }
 
@@ -794,6 +870,7 @@ function renderMixer() {
  */
 function applyCrossfade() {
   const x = state.crossfade;
+  state.syncCrossfader?.();
   decks.A.player.setChannelGain(Math.sqrt(1 - x));
   decks.B.player.setChannelGain(Math.sqrt(x));
 }
