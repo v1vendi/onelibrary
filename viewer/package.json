@@ -4,6 +4,15 @@
   "description": "Browse a rekordbox OneLibrary export in the browser. Decrypts SQLCipher with WebCrypto; no server, no native modules, no uploads.",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://v1vendi.github.io/onelibrary/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/v1vendi/onelibrary.git",
+    "directory": "viewer"
+  },
+  "bugs": {
+    "url": "https://github.com/v1vendi/onelibrary/issues"
+  },
   "scripts": {
     "build": "node build.mjs",
     "test": "node --test test/viewer.test.mjs",

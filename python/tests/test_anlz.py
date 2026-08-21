@@ -10,7 +10,7 @@ import struct
 
 import pytest
 
-from onelibrary.anlz import NO_LOOP, AnlzFile, CueList, CueType, iter_sections
+from onelibrary.anlz import NO_LOOP, AnlzFile, CueList, CueType
 
 
 def build_pcpt(hot: int, cue_type: int, time_ms: int, loop_end: int = NO_LOOP) -> bytes:

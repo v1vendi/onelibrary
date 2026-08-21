@@ -24,7 +24,7 @@ from onelibrary.writer import (
 )
 
 KEY = "a" * 64
-SCHEMA_SQL = Path(__file__).parent.parent / "spec" / "schema.sql"
+SCHEMA_SQL = Path(__file__).resolve().parents[2] / "spec" / "schema.sql"
 
 
 @pytest.fixture

@@ -1,0 +1,46 @@
+name: python
+
+on:
+  push:
+    branches: [master, main]
+    paths: ['python/**', 'spec/**', '.github/workflows/python.yml']
+  pull_request:
+    paths: ['python/**', 'spec/**', '.github/workflows/python.yml']
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: test (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor declared by requires-python, and a current stable.
+        python: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv pip install --system -e ./python pytest
+
+      - name: Test
+        # tests/corpus/ is real captures of a personal library and is
+        # gitignored, so the tests that need it skip here rather than fail.
+        run: pytest python/tests -q
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # Pinned: ruff's default rule set widens between releases, so an
+      # unpinned job starts failing on untouched code when the runner updates.
+      - run: uvx ruff@0.16.4 check python/

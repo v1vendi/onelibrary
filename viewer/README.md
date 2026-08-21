@@ -1,5 +1,7 @@
 # OneLibrary Viewer
 
+**[Open it →](https://v1vendi.github.io/onelibrary/)**
+
 Browse a rekordbox **OneLibrary** export in the browser. Drag a USB stick onto
 the page and get the track list, playlists, cues, loops, beatgrid and colour
 waveforms.
@@ -7,8 +9,12 @@ waveforms.
 Everything runs locally. The database is decrypted **in the page** with
 WebCrypto; nothing is uploaded, and there is no server.
 
+Part of the [onelibrary](https://github.com/v1vendi/onelibrary) project, whose
+Python library and CLI live in [`python/`](../python) and whose format
+specification lives in [`spec/ONELIBRARY.md`](../spec/ONELIBRARY.md).
+
 ```bash
-npm test          # 21 tests
+npm test          # 81 tests
 npm run build     # -> dist/index.html, a single self-contained file
 npm run serve     # then open http://localhost:8777
 ```
@@ -75,9 +81,9 @@ One deck by default; **Two decks** switches to the mixing layout, where the
 scrolling lanes run the full width and stack so both playheads sit on one
 vertical line — which is what makes the phase difference between two tracks
 visible. Each deck has artwork, elapsed and remaining time, CUE and play, hot
-cue pads A–H, a pitch fader with ±6/10/16/100% ranges, and BEAT SYNC.
+cue pads A–H, a pitch fader with ±6/10/16/100% ranges, and SYNC.
 
-**BEAT SYNC is a latch, and it aligns the bar.** Pressing it locks the deck to
+**SYNC is a latch, and it aligns the bar.** Pressing it locks the deck to
 the other one; pressing again releases it. Only one deck follows at a time, so
 locking one releases the other rather than letting them chase each other.
 
@@ -175,6 +181,7 @@ published page runs in a sandboxed frame where that picker never opens.
   so it saves `onelibrary-edits.json` instead:
 
   ```bash
+  uv pip install -e ../python     # once
   onelibrary apply onelibrary-edits.json /Volumes/YOURUSB
   ```
 

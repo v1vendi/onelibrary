@@ -35,3 +35,10 @@ packages = ["src/onelibrary"]
 
 [tool.ruff]
 line-length = 100
+
+# Pinned explicitly rather than left to ruff's defaults. The default set widens
+# between ruff releases -- 0.16 added six new rule families to it -- so an
+# unpinned CI job starts failing on untouched code the day the runner picks up
+# a new ruff. These are the rules this code was written against.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

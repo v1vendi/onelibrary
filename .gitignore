@@ -1,8 +1,12 @@
 # Real captures contain the user's personal music metadata. Never commit.
-tests/corpus/
+python/tests/corpus/
 *.db
 *.db-shm
 *.db-wal
+# ...except the viewer's fixture, which is synthetic (Alpha/Beta/Gamma, device
+# TESTDEV) and is what `npm test` decrypts. Without it a fresh clone cannot
+# run the viewer suite, and neither can CI.
+!viewer/test/fixtures/sample.db
 __pycache__/
 *.pyc
 .venv/

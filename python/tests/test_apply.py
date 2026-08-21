@@ -13,7 +13,7 @@ import pytest
 
 from onelibrary.cli import main
 from onelibrary.db import OneLibraryDB
-from onelibrary.writer import Library, Playlist, Track, write_device
+from onelibrary.writer import Library, Track, write_device
 
 KEY = "c" * 64
 

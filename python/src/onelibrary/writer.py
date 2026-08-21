@@ -29,7 +29,7 @@ from datetime import date
 from pathlib import Path
 
 from onelibrary import defaults
-from onelibrary.db import EXPORT_DB_RELPATH, open_encrypted
+from onelibrary.db import EXPORT_DB_RELPATH
 from onelibrary.keys import resolve_key
 from sqlalchemy.schema import CreateTable
 

@@ -1,0 +1,63 @@
+name: pages
+
+on:
+  push:
+    branches: [master, main]
+    paths: ['viewer/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+# The deploy job needs to mint an OIDC token for the Pages deployment; the
+# build job only reads the repository.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time. Queued runs are not cancelled, so a push that
+# lands mid-deploy still publishes rather than being dropped.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: viewer
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No dependencies to install: the viewer has no runtime or build
+      # packages, which is why there is no lockfile and no npm ci here.
+      - name: Test
+        run: npm test
+
+      # build.mjs syntax-checks the bundle and exits non-zero if it does not
+      # parse, so a broken page fails the job instead of being deployed.
+      - name: Build
+        run: npm run build
+
+      # Pages runs Jekyll over the artifact unless told not to; the viewer is
+      # plain static output and needs it left alone.
+      - name: Disable Jekyll
+        run: touch dist/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: viewer/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

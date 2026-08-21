@@ -14,7 +14,7 @@ import pytest
 
 from onelibrary.schema import ALL_TABLES, Base
 
-SCHEMA_SQL = Path(__file__).parent.parent / "spec" / "schema.sql"
+SCHEMA_SQL = Path(__file__).resolve().parents[2] / "spec" / "schema.sql"
 
 
 def parse_reference() -> dict[str, list[str]]:

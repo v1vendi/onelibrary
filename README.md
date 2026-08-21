@@ -1,11 +1,32 @@
 # onelibrary
 
-An open-source Python implementation of **OneLibrary**, the cross-brand DJ
-library format that AlphaTheta and Algoriddim launched in October 2025 as the
-successor to rekordbox's legacy DeviceSQL (`export.pdb`) USB exports.
+Open-source tooling for **OneLibrary**, the cross-brand DJ library format that
+AlphaTheta and Algoriddim launched in October 2025 as the successor to
+rekordbox's legacy DeviceSQL (`export.pdb`) USB exports.
 
 > **Status: pre-alpha.** The decryption layer works and is verified. The format
 > itself is still being reverse-engineered. Nothing here is stable yet.
+
+**[Open the viewer →](https://v1vendi.github.io/onelibrary/)** — drag a USB
+stick onto the page. Everything runs locally; nothing is uploaded.
+
+## What is here
+
+| | |
+|---|---|
+| **[`python/`](python)** | The `onelibrary` library and CLI — read and write exports, resolve keys, parse ANLZ. [README](python/README.md) |
+| **[`viewer/`](viewer)** | A browser viewer for the same format — decrypts in the page with WebCrypto, no server. [README](viewer/README.md) |
+| **[`spec/`](spec)** | The format specification: [`ONELIBRARY.md`](spec/ONELIBRARY.md) and the captured [`schema.sql`](spec/schema.sql) |
+| **[`docs/`](docs)** | Reverse-engineering method — [`CAPTURING.md`](docs/CAPTURING.md) |
+
+The two implementations are independent: the viewer is plain JavaScript with no
+build dependencies and does not call the Python library. They meet at the format
+specification, and at one file — the viewer cannot write to a device in place,
+so it emits a change-set that the CLI applies:
+
+```bash
+onelibrary apply onelibrary-edits.json /Volumes/MYUSB
+```
 
 ## Why
 
@@ -18,47 +39,22 @@ rekordbox USBs needs this format documented.
 Some prior art exists for *reading*: [`onelibrary-connect`](https://github.com/chrisle/onelibrary-connect)
 (TypeScript) and `rbox` (Python). Nothing open-source can **write** a OneLibrary
 export. That is the gap this project aims to fill, alongside a written format
-specification in [`spec/ONELIBRARY.md`](spec/ONELIBRARY.md).
+specification.
 
-## Install
-
-```bash
-uv pip install -e .
-```
-
-Requires Python 3.10+ and `sqlcipher3-wheels` (macOS arm64, Linux, and Windows
-wheels are published; note that `sqlcipher3-binary` has **no** macOS arm64
-wheels, which is why this project does not use it).
-
-## Use
+## Quick start
 
 ```bash
-onelibrary inspect /Volumes/MYUSB     # what is on this device
-onelibrary schema  /Volumes/MYUSB     # CREATE statements
-onelibrary dump    /Volumes/MYUSB --table content --limit 5
-onelibrary key     /Volumes/MYUSB     # how the passphrase resolves
+# the library
+uv pip install -e ./python
+onelibrary inspect /Volumes/MYUSB
+
+# the viewer
+cd viewer && npm test && npm run build   # -> dist/index.html, one self-contained file
 ```
 
-```python
-from onelibrary import OneLibraryDB
-
-with OneLibraryDB("/Volumes/MYUSB") as db:
-    for table in db.tables():
-        print(table, db.row_count(table))
-```
-
-## Encryption
-
-`PIONEER/rekordbox/exportLibrary.db` is a SQLCipher database using SQLCipher 4
-defaults (AES-256-CBC, 4096-byte pages, PBKDF2-HMAC-SHA512 at 256,000
-iterations, per-page HMAC-SHA512). The passphrase is passed as a **string**,
-not as a raw hex key.
-
-The passphrase is resolved in three tiers: an explicit `--key` or
-`$ONELIBRARY_KEY`; runtime extraction from your own installed rekordbox
-(cached under `~/.cache/onelibrary/`); and a bundled constant as a last
-resort. Candidates are validated by actually decrypting the target database,
-so a stale constant fails loudly rather than producing a confusing error.
+The viewer has no dependencies to install — no lockfile, no `node_modules`, no
+WASM blob. `npm run build` inlines every module into a single HTML file that
+works from a `file://` URL.
 
 ## Scope and limitations
 
@@ -73,24 +69,6 @@ does not circumvent DRM on audio content and ships no copyrighted material.
 
 Not affiliated with, endorsed by, or supported by AlphaTheta / Pioneer DJ.
 
-## Development
-
-```bash
-uv venv && uv pip install -e . --group dev
-pytest
-```
-
-Reverse-engineering workflow — capture a baseline, change exactly one thing in
-rekordbox, re-export, and diff:
-
-```bash
-python tools/capture.py /Volumes/MYUSB -o tests/corpus/00-baseline
-python tools/capture.py /Volumes/MYUSB -o tests/corpus/01-one-hotcue
-python tools/diff_exports.py tests/corpus/00-baseline tests/corpus/01-one-hotcue
-```
-
-Captures contain personal music metadata; `tests/corpus/` is gitignored.
-
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
