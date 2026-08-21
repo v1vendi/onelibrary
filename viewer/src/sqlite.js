@@ -199,7 +199,26 @@ export class SQLiteDatabase {
  * other type do not, and are stored in the record normally.
  */
 export function rowidAlias(sql) {
-  return /[(,]\s*["`[]?(\w+)["`\]]?\s+integer\s+primary\s+key/i.exec(sql || '')?.[1] ?? null;
+  const s = sql || '';
+  // A WITHOUT ROWID table has no rowid to alias, so nothing can stand in for it.
+  if (/\)\s*without\s+rowid\s*$/i.test(s)) return null;
+
+  const inline = /[(,]\s*["`[]?(\w+)["`\]]?\s+integer\s+primary\s+key/i.exec(s);
+  if (inline) return inline[1];
+
+  // The same thing said the other way round: `x INTEGER, PRIMARY KEY (x)`
+  // aliases the rowid exactly as `x INTEGER PRIMARY KEY` does. rekordbox writes
+  // the inline form, so only the inline form was recognised -- and a database
+  // written any other way had every id read back as null, because a rowid alias
+  // is not stored in the record and there was nothing to fall back on. Lookups
+  // by id then matched nothing: artists, albums and genres came out blank and
+  // playlists came out empty.
+  const pk = /\bprimary\s+key\s*\(\s*["`[]?(\w+)["`\]]?\s*\)/i.exec(s);
+  if (!pk) return null;
+  // Only a column whose declared type is exactly INTEGER qualifies -- INT,
+  // BIGINT and the rest are stored normally.
+  const declared = new RegExp(`[(,]\\s*["\`[]?${pk[1]}["\`\\]]?\\s+integer\\b`, 'i');
+  return declared.test(s) ? pk[1] : null;
 }
 
 /** Table-level constraints, which are clauses in the column list but not columns. */

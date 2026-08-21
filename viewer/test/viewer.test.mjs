@@ -136,6 +136,26 @@ test('rowidAlias sees through quoting', () => {
   assert.equal(rowidAlias('CREATE TABLE t(a INT PRIMARY KEY, b VARCHAR)'), null);
 });
 
+test('rowidAlias accepts the table-constraint form', () => {
+  // Regression: `x INTEGER, PRIMARY KEY (x)` aliases the rowid exactly as the
+  // inline form does. rekordbox writes it inline, so only that was recognised,
+  // and any database written the other way read every id back as null -- blank
+  // artists and albums, and playlists that appeared to contain nothing.
+  assert.equal(
+    rowidAlias('CREATE TABLE artist (\n\tartist_id INTEGER NOT NULL, \n\tname VARCHAR, \n\tPRIMARY KEY (artist_id)\n)'),
+    'artist_id'
+  );
+});
+
+test('rowidAlias rejects what does not alias the rowid', () => {
+  // A composite key aliases nothing.
+  assert.equal(rowidAlias('CREATE TABLE t(a INTEGER, b INTEGER, PRIMARY KEY (a, b))'), null);
+  // Only the exact type INTEGER qualifies; BIGINT is stored normally.
+  assert.equal(rowidAlias('CREATE TABLE t(a BIGINT, PRIMARY KEY (a))'), null);
+  // WITHOUT ROWID leaves no rowid to stand in for.
+  assert.equal(rowidAlias('CREATE TABLE t(a INTEGER, PRIMARY KEY (a)) WITHOUT ROWID'), null);
+});
+
 // -- anlz -------------------------------------------------------------------
 
 function buildPcpt(hot, type, timeMs, loopEnd = 0xffffffff) {
