@@ -35,13 +35,12 @@ jobs:
 
       # No dependencies to install: the viewer has no runtime or build
       # packages, which is why there is no lockfile and no npm ci here.
-      - name: Test
-        run: npm test
-
-      # build.mjs syntax-checks the bundle and exits non-zero if it does not
+      #
+      # `npm test` builds first via pretest -- two of the tests assert on the
+      # bundled page -- and build.mjs exits non-zero when the bundle does not
       # parse, so a broken page fails the job instead of being deployed.
-      - name: Build
-        run: npm run build
+      - name: Build and test
+        run: npm test
 
       # Pages runs Jekyll over the artifact unless told not to; the viewer is
       # plain static output and needs it left alone.

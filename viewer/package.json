@@ -15,9 +15,20 @@
   },
   "scripts": {
     "build": "node build.mjs",
+    "pretest": "node build.mjs",
     "test": "node --test test/viewer.test.mjs",
     "serve": "python3 -m http.server 8777"
   },
-  "files": ["src", "index.html", "dist"],
-  "keywords": ["rekordbox", "onelibrary", "sqlcipher", "dj", "webcrypto"]
+  "files": [
+    "src",
+    "index.html",
+    "dist"
+  ],
+  "keywords": [
+    "rekordbox",
+    "onelibrary",
+    "sqlcipher",
+    "dj",
+    "webcrypto"
+  ]
 }

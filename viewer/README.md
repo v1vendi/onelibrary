@@ -14,10 +14,12 @@ Python library and CLI live in [`python/`](../python) and whose format
 specification lives in [`spec/ONELIBRARY.md`](../spec/ONELIBRARY.md).
 
 ```bash
-npm test          # 81 tests
+npm test          # 81 tests; builds first, two of them assert on the bundle
 npm run build     # -> dist/index.html, a single self-contained file
 npm run serve     # then open http://localhost:8777
 ```
+
+There is nothing to install — no dependencies, no lockfile, no `node_modules`.
 
 ## How it works
 
