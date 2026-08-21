@@ -13,3 +13,6 @@ build/
 .ruff_cache/
 viewer/dist/
 viewer/node_modules/
+
+# macOS
+.DS_Store

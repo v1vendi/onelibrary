@@ -266,6 +266,13 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
   const colour = waveform.source === 'PWV5';
   const startMs = positionMs - windowMs / 2;
   const msToX = (ms) => ((ms - startMs) / windowMs) * w;
+  // The playhead advances continuously, so a raw msToX() places every beat
+  // tick at a fresh fractional pixel each frame; the browser's antialiasing
+  // then varies frame to frame and reads as a flicker on the grid even though
+  // nothing is actually changing shape. Snapping to the device-pixel grid
+  // gives each tick a small number of crisp, stable positions instead.
+  const dpr = globalThis.devicePixelRatio || 1;
+  const snapX = (x) => Math.round(x * dpr) / dpr;
 
   const colsPerMs = cols.length / durationMs;
   const pxPerCol = w / (windowMs * colsPerMs);
@@ -285,7 +292,7 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
   // line, which is what makes bar boundaries findable at a glance.
   for (const b of beats) {
     if (b.timeMs < startMs - 50 || b.timeMs > startMs + windowMs + 50) continue;
-    const x = msToX(b.timeMs);
+    const x = snapX(msToX(b.timeMs));
     const downbeat = b.beat === 1;
     ctx.fillStyle = downbeat ? BEAT_DOWN_LINE : BEAT_LINE;
     ctx.fillRect(x - 0.5, 0, downbeat ? 1.5 : 1, h);
@@ -327,7 +334,7 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
   }
 
   for (const c of cues) {
-    const x = msToX(c.timeMs);
+    const x = snapX(msToX(c.timeMs));
     if (x < -12 || x > w + 12) continue;
     const color = cueColor(c);
     ctx.fillStyle = color;

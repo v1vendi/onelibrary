@@ -312,24 +312,6 @@ function renderList() {
   list.append(table);
 }
 
-async function anlzFor(track) {
-  const p = track.analysisDataFilePath;
-  if (!p) return null;
-  const rel = p.replace(/^\//, '').toLowerCase();
-  const dat = state.files.get(rel) || [...state.files].find(([k]) => k.endsWith(rel))?.[1];
-  const extKey = rel.replace(/\.dat$/, '.ext');
-  const ext = state.files.get(extKey) || [...state.files].find(([k]) => k.endsWith(extKey))?.[1];
-  if (!dat && !ext) return null;
-  try {
-    return parseAnlz(
-      dat ? new Uint8Array(await dat.arrayBuffer()) : null,
-      ext ? new Uint8Array(await ext.arrayBuffer()) : null
-    );
-  } catch {
-    return null;
-  }
-}
-
 /** Locate a device file by its stored path, which is device-relative. */
 function deviceFile(storedPath) {
   if (!storedPath) return null;
@@ -446,7 +428,6 @@ function renderDeck(deck, lanes = null) {
   } else {
     art.append(el('span', 'art-empty', deck.id));
   }
-  head.append(art);
 
   const vis = el('canvas', 'vis');
   vis.title = 'Spectrum';
@@ -456,14 +437,18 @@ function renderDeck(deck, lanes = null) {
   const f = deck.track ? trackFields(deck.track) : {};
   ident.append(el('div', 'deck-title', deck.track?.title || 'No track loaded'));
   ident.append(el('div', 'deck-artist', f.artist || ''));
-  head.append(ident);
-  head.append(vis);
 
   const clocks = el('div', 'clocks');
   const elapsed = el('div', 'clock mono', fmtPosition(deck.player.positionMs));
   const remain = el('div', 'remain mono', '-' + fmtPosition(deck.remainingMs));
   clocks.append(elapsed, remain);
-  head.append(clocks);
+
+  // Identity and the clock share one display -- two regions of the same
+  // panel rather than two separate boxes -- with the visualiser to its left
+  // instead of wedged between them.
+  const display = el('div', 'display');
+  display.append(ident, clocks);
+  head.append(art, vis, display);
   panel.append(head);
 
   // -- waveforms ---------------------------------------------------------
@@ -491,11 +476,10 @@ function renderDeck(deck, lanes = null) {
   const playBtn = button('dbtn play', deck.player.playing ? '❚❚' : '▶',
     'Play or pause', () => deck.player.toggle());
   bar.append(cueBtn, playBtn);
-  panel.append(bar);
 
-  // Below the transport: pads take the left, the tempo column the right, so
-  // the fader and its readouts get room instead of being squeezed into a row.
-  const lower = el('div', 'deck-lower');
+  // The tempo column sits in the transport row itself, pushed to the far
+  // right by its own margin, so it reads as part of the same control cluster
+  // as LOAD/CUE/PLAY rather than as a separate block below the pads.
   const tempo = el('div', 'tempo');
   const bpmRead = el('div', 'bpm-read mono',
     deck.bpm === null ? '--.--' : deck.bpm.toFixed(2));
@@ -528,7 +512,7 @@ function renderDeck(deck, lanes = null) {
   // deck's tempo and stays held on its bar grid.
   const sync = button(
     'dbtn sync' + (deck.syncOn ? ' on' : ''),
-    'BEAT SYNC',
+    'SYNC',
     deck.syncOn ? 'Release the lock' : `Lock to deck ${other.id}`,
     () => {
       if (deck.syncOn) {
@@ -546,11 +530,13 @@ function renderDeck(deck, lanes = null) {
   );
   sync.setAttribute('aria-pressed', String(deck.syncOn));
   if (!deck.loaded || !other.loaded || deckCount === 1) sync.disabled = true;
-  if (deckCount === 2) tempo.append(sync);
+  // Placed before the ranges so the DOM order matches the visual one: SYNC
+  // heads the right-hand column of the tempo block, above the switchers.
+  if (deckCount === 2) tempo.insertBefore(sync, ranges);
 
   // -- hot cues ----------------------------------------------------------
-  // Two rows of four: A-D over E-H, which keeps the pads compact on the left
-  // rather than stretching a single row across the whole panel.
+  // Two rows of four: A-D over E-H, which keeps the pads compact rather than
+  // stretching a single row across the whole panel.
   const pads = el('div', 'pads');
   for (const letter of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
     const cue = deck.hotCues.find((c) => c.hotLetter === letter);
@@ -560,8 +546,15 @@ function renderDeck(deck, lanes = null) {
     pad.onclick = () => deck.jumpToHotCue(letter);
     pads.append(pad);
   }
-  lower.append(pads, tempo);
-  panel.append(lower);
+
+  // The transport buttons and the pads stack in their own column so the
+  // tempo block can run down the full height beside them, right where LOAD,
+  // CUE and PLAY are, instead of opening a gap under the short button row.
+  const controls = el('div', 'deck-controls');
+  const left = el('div', 'deck-controls-left');
+  left.append(bar, pads);
+  controls.append(left, tempo);
+  panel.append(controls);
 
   // -- redraw wiring -----------------------------------------------------
   const redraw = () => {

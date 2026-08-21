@@ -76,31 +76,39 @@
    --------------------------------------------------------------------------- */
 :root {
   --sidebar-w: 244px;
-  --fs-micro: 10px;
-  --fs-small: 12px;
-  --fs-body:  13px;
-  --fs-lead:  15px;
-  --fs-title: 18px;
-  --fs-clock: 21px;
+  --fs-micro: 11px;
+  --fs-small: 13px;
+  --fs-body:  14px;
+  --fs-lead:  16px;
+  --fs-title: 19px;
+  --fs-clock: 23px;
+  /* Artwork, spectrum and text display share this; see .deck-head. */
+  --deck-head-h: 46px;
+  --dbtn-h: 32px;
+  --knob: 34px;
 }
 :root[data-skin="classic"] {
   --sidebar-w: 190px;
-  --fs-micro: 10px;
-  --fs-small: 11px;
-  --fs-body:  12px;
-  --fs-lead:  13px;
-  --fs-title: 15px;
-  --fs-clock: 24px;
+  --fs-micro: 11px;
+  --fs-small: 12px;
+  --fs-body:  13px;
+  --fs-lead:  14px;
+  --fs-title: 16px;
+  --fs-clock: 30px;
+  /* The classic clock is oversized bitmap-style digits, so its display -- and
+     with it the whole header row -- stands taller than the modern skin's. */
+  --deck-head-h: 64px;
 }
 @media (max-width: 700px) {
   :root,
   :root[data-skin="classic"] {
-    --fs-micro: 12px;
-    --fs-small: 13px;
-    --fs-body:  15px;
-    --fs-lead:  16px;
-    --fs-title: 20px;
-    --fs-clock: 28px;
+    --fs-micro: 13px;
+    --fs-small: 14px;
+    --fs-body:  16px;
+    --fs-lead:  17px;
+    --fs-title: 21px;
+    --fs-clock: 30px;
+    --deck-head-h: 64px;
   }
   /* Wide tracking costs real width once the type grows. */
   .label, th { letter-spacing: .06em; }
@@ -187,29 +195,47 @@ header h1 b { color: var(--accent); font-weight: 650; }
 }
 .deck-row { display: grid; gap: 12px; }
 /* Deck, mixer, deck. The mixer track is `auto` so it takes exactly the width
-   of its channel strips and the two decks split what is left evenly. */
-#decks[data-count="2"] .deck-row { grid-template-columns: 1fr auto 1fr; align-items: start; }
+   of its channel strips and the two decks split what is left evenly.
+
+   The deck tracks are minmax(0, 1fr), not 1fr: a bare `1fr` is minmax(auto,
+   1fr), and that automatic minimum is the item's min-content width. A deck
+   holding a long title and a full control cluster is wider than its share, so
+   it refuses to shrink and pushes the row past the page -- which clipped the
+   right-hand deck's clock, pitch ranges and SYNC. A zero minimum lets the two
+   decks stay equal and the content ellipsise instead. */
+#decks[data-count="2"] .deck-row { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; }
 @media (max-width: 1100px) {
-  #decks[data-count="2"] .deck-row { grid-template-columns: 1fr 1fr; }
+  #decks[data-count="2"] .deck-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   #decks[data-count="2"] .mixer { grid-column: 1 / -1; order: 3; }
 }
-@media (max-width: 760px) { #decks[data-count="2"] .deck-row { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { #decks[data-count="2"] .deck-row { grid-template-columns: minmax(0, 1fr); } }
 .deck.drop { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
 tbody tr[draggable="true"] { cursor: grab; }
 
 .deck {
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
   padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  min-width: 0;
 }
 .deck.focused { border-color: var(--accent); }
 
-.deck-head { display: flex; align-items: center; gap: 10px; }
+/* Artwork, spectrum and text display are one row of instrument panels, so they
+   sit on a shared top and bottom edge at a single height rather than each
+   sizing to its own content -- the art was a fixed 46px square, the spectrum a
+   38px strip pinned to the top, and the display whatever its two lines of type
+   came to. --deck-head-h is per skin because the classic clock is much taller
+   than the modern one. */
+.deck-head { display: flex; align-items: stretch; gap: 10px; }
 .art {
-  width: 46px; height: 46px; flex: none; border-radius: 5px; overflow: hidden;
+  width: var(--deck-head-h); height: var(--deck-head-h); flex: none;
+  border-radius: 5px; overflow: hidden;
   background: var(--sunken); display: grid; place-items: center;
 }
 .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .art-empty { color: var(--ink-soft); font-weight: 700; font-size: var(--fs-lead); }
+/* Identity and the clock, as one display with two regions rather than two
+   separate boxes -- the classic skin fuses them into a single LCD panel. */
+.display { display: flex; align-items: stretch; gap: 10px; flex: 1; min-width: 0; height: var(--deck-head-h); }
 .ident { min-width: 0; flex: 1; }
 .deck-title {
   font-weight: 600; font-size: var(--fs-body);
@@ -226,18 +252,34 @@ tbody tr[draggable="true"] { cursor: grab; }
 /* Proportions follow a CDJ layout: the scrolling view carries the detail and
    gets the room, with the whole-track strip about half its height beneath.
    The selector covers both placements — inside a deck panel with one deck, and
-   hoisted into a full-width lane with two. */
+   hoisted into a full-width lane with two. Both are 70% of their original
+   height, moving and static alike. */
 .deck canvas.wave.detail,
-.lane canvas.wave.detail { height: 132px; }
-.deck canvas.wave.overview { height: 66px; }
+.lane canvas.wave.detail { height: 92px; }
+.deck canvas.wave.overview { height: 46px; }
 .lane canvas.wave.detail { border-radius: 0; }
 @media (max-width: 700px) {
   .deck canvas.wave.detail,
-  .lane canvas.wave.detail { height: 108px; }
-  .deck canvas.wave.overview { height: 48px; }
+  .lane canvas.wave.detail { height: 76px; }
+  .deck canvas.wave.overview { height: 34px; }
 }
 
-.deck-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* LOAD, CUE and PLAY are one row of transport keys and read as a set, so the
+   box is a fixed height and the label sits centred inside it. Padding alone
+   made PLAY the odd one out: its glyph is set at body size against the others'
+   micro size, and the taller line box grew the button with it. */
+.deck-bar { display: flex; align-items: stretch; gap: 6px; flex-wrap: wrap; }
+.deck-bar button.dbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: var(--dbtn-h); padding: 0 10px; line-height: 1;
+}
+
+/* The button row and the pad grid stack in one column; the tempo block runs
+   the full height of that stack beside them, so it reads as part of the same
+   LOAD/CUE/PLAY control cluster rather than a block of its own further down
+   the panel. */
+.deck-controls { display: flex; align-items: flex-start; gap: 12px; }
+.deck-controls-left { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
 button.dbtn {
   font: inherit; font-size: var(--fs-micro); font-weight: 650; letter-spacing: .06em;
   padding: 7px 10px; cursor: pointer; border-radius: 6px;
@@ -258,21 +300,25 @@ button.dbtn.sync.on {
   border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
 }
 
-/* Pads left, tempo column right. */
-.deck-lower { display: flex; align-items: flex-start; gap: 14px; }
 .pads {
   display: grid; grid-template-columns: repeat(4, minmax(34px, 56px));
-  gap: 4px; flex: 0 1 auto;
+  gap: 4px; flex: 0 1 auto; margin-top: 2px;
 }
+/* Tempo runs beside the transport-and-pads column now, so it reads as part
+   of the LOAD/CUE/PLAY cluster rather than a block of its own further down
+   the panel. */
 .tempo {
-  display: grid; gap: 5px; margin-left: auto; flex: none;
+  display: grid; gap: 4px 5px; flex: none;
   grid-template-columns: auto auto; grid-template-rows: auto auto;
   align-items: start; justify-items: center;
 }
 .tempo-readouts { grid-column: 1; grid-row: 1; text-align: right; }
 .tempo .fader { grid-column: 1; grid-row: 2; }
-.tempo .ranges { grid-column: 2; grid-row: 1 / span 2; }
-.tempo .dbtn.sync { grid-column: 1 / span 2; grid-row: 3; width: 100%; margin: 2px 0 0; }
+/* SYNC heads the right-hand column, directly over the range switchers, so the
+   latch sits with the readouts at the top of the block rather than below the
+   fader where it read as an afterthought. */
+.tempo .dbtn.sync { grid-column: 2; grid-row: 1; width: 100%; margin: 0; }
+.tempo .ranges { grid-column: 2; grid-row: 2; }
 .bpm-read {
   font-size: var(--fs-lead); font-weight: 650;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -295,7 +341,7 @@ input.fader:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
 .ranges { flex-direction: column; }
 
 canvas.vis {
-  width: 76px; height: 38px; flex: none; align-self: center;
+  width: 76px; height: var(--deck-head-h); flex: none;
   background: #000; border: 1px solid var(--line); border-radius: 3px;
 }
 :root[data-skin="classic"] canvas.vis {
@@ -307,26 +353,46 @@ canvas.vis {
 /* --- mixer ---------------------------------------------------------------- */
 
 .mixer {
-  display: grid; grid-template-columns: auto auto; gap: 10px 14px;
+  display: grid; grid-template-columns: auto auto; gap: 8px 18px;
   justify-content: center; align-items: start;
-  padding: 12px 14px; flex: none;
+  padding: 10px 14px; flex: none;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
 }
 /* The crossfader belongs to neither channel, so it runs under both. */
-.crossfade-row { grid-column: 1 / -1; display: flex; justify-content: center; }
-.channel { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.crossfade-row { grid-column: 1 / -1; display: flex; justify-content: center; margin-top: 2px; }
+/* A channel strip stacks: id, then the three filters, then the volume fader,
+   all in one vertical line, as on a real mixer. */
+/* Two columns: the controls -- id, dials, fader -- in one vertical line, and
+   the labels beside them. Centring each row on its own width made the dials
+   wander, because MID is wider than HI and LO, and it centred the fader under
+   knob-plus-label rather than under the knob. A fixed control column puts all
+   three on the same axis whatever the labels say. */
+.channel {
+  display: grid; grid-template-columns: var(--knob) auto;
+  column-gap: 5px; row-gap: 8px; align-items: center;
+}
+.channel .ch-id { grid-column: 1; justify-self: center; }
+.channel input.volume { grid-column: 1; justify-self: center; }
 .ch-id {
   font-size: var(--fs-micro); font-weight: 700; letter-spacing: .18em;
   color: var(--ink-soft);
 }
-.eq { display: flex; flex-direction: column; gap: 8px; align-items: center; }
-.knob-wrap { display: grid; justify-items: center; gap: 1px; }
+.eq { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+/* Knob left, its label and readout beside it -- to the side of the dial
+   rather than crowding above and below it. */
+.knob-wrap {
+  display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto;
+  align-items: center; column-gap: 4px; row-gap: 0;
+}
+.knob-wrap .knob { grid-column: 1; grid-row: 1 / span 2; }
+.knob-label { grid-column: 2; grid-row: 1; text-align: left; }
+.knob-read { grid-column: 2; grid-row: 2; text-align: left; }
 
 /* A dial with a pointer, rotated by a custom property so only one value
    changes as it turns. */
 .knob {
   --angle: 0deg;
-  width: 34px; height: 34px; border-radius: 50%; position: relative;
+  width: var(--knob); height: var(--knob); border-radius: 50%; position: relative;
   cursor: ns-resize; touch-action: none;
   background: radial-gradient(circle at 50% 32%, #6a6a76 0%, #45454f 58%, #2b2b33 100%);
   border: 1px solid var(--line);
@@ -349,7 +415,7 @@ canvas.vis {
 input.volume {
   writing-mode: vertical-lr; direction: rtl;
   -webkit-appearance: slider-vertical;
-  width: 30px; height: 110px; accent-color: var(--accent); cursor: ns-resize;
+  width: 30px; height: 92px; accent-color: var(--accent); cursor: ns-resize;
 }
 input.volume:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -404,7 +470,7 @@ input.crossfader:focus-visible { outline: 2px solid var(--accent); outline-offse
 :root[data-skin="classic"] input.crossfader {
   -webkit-appearance: none; appearance: none; background: transparent; accent-color: auto;
 }
-:root[data-skin="classic"] input.volume { width: 32px; height: 112px; }
+:root[data-skin="classic"] input.volume { width: 32px; height: 94px; }
 :root[data-skin="classic"] input.volume::-webkit-slider-runnable-track,
 :root[data-skin="classic"] input.crossfader::-webkit-slider-runnable-track {
   background: #101014;
@@ -470,9 +536,28 @@ button.pad.set:hover { background: var(--hot); color: var(--on-accent); }
   border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
 }
 :root[data-skin="classic"] .deck.focused { border-color: var(--phosphor); }
-:root[data-skin="classic"] .deck-title { color: var(--phosphor); }
-:root[data-skin="classic"] .clocks .clock { color: var(--phosphor); }
 :root[data-skin="classic"] .bpm-read { color: var(--phosphor); }
+
+/* The song name and the clock read as one continuous LCD glass -- the same
+   black, sunken-groove finish as the waveform and the spectrum -- rather than
+   two separate boxes, which is Winamp's single display area. */
+:root[data-skin="classic"] .display {
+  background: #000; padding: 2px 6px; border-radius: 0;
+  border-style: solid; border-width: 1px;
+  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+  gap: 0;
+}
+:root[data-skin="classic"] .deck-title { color: var(--phosphor); font-weight: 400; }
+:root[data-skin="classic"] .deck-artist { color: var(--phosphor-dim); }
+/* A thin groove divides the two regions of the shared panel instead of a gap
+   between two separately-bordered boxes. */
+:root[data-skin="classic"] .clocks {
+  padding-left: 8px; margin-left: 4px;
+  border-left: 1px solid var(--bevel-lo);
+  box-shadow: -1px 0 0 var(--bevel-hi);
+}
+:root[data-skin="classic"] .clocks .clock { color: var(--phosphor); }
+:root[data-skin="classic"] .clocks .remain { color: var(--phosphor-dim); }
 :root[data-skin="classic"] button.dbtn,
 :root[data-skin="classic"] button.rbtn,
 :root[data-skin="classic"] button.pad {
@@ -1048,6 +1133,7 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 :root[data-skin="classic"] button.tbtn:active:not(:disabled),
 :root[data-skin="classic"] button.dbtn:active:not(:disabled),
 :root[data-skin="classic"] button.zbtn:active,
+:root[data-skin="classic"] button.rbtn:active,
 :root[data-skin="classic"] button.pad:active:not(:disabled) {
   border-color: var(--btn-shadow) var(--btn-hi) var(--btn-hi) var(--btn-shadow);
   box-shadow: inset 1px 1px 0 rgba(74,90,107,.6);
@@ -1153,14 +1239,16 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   border-style: solid; border-width: 1px;
 }
 
-/* Playlist metrics from Webamp: 13px rows, 9px text, half-pixel tracking. */
+/* Webamp's playlist runs 13px rows of 9px text -- authentic, but too small to
+   read comfortably here. Rows grow to fit the same readable type the rest of
+   the classic skin uses instead of the original pixel-exact size. */
 :root[data-skin="classic"] td {
-  height: 13px; line-height: 13px; padding: 0 6px;
-  font-size: 9px; letter-spacing: .5px;
+  height: 20px; line-height: 20px; padding: 0 6px;
+  font-size: var(--fs-small); letter-spacing: .3px;
 }
 :root[data-skin="classic"] th {
-  height: 13px; line-height: 13px; padding: 0 6px;
-  font-size: 9px; letter-spacing: .5px;
+  height: 20px; line-height: 20px; padding: 0 6px;
+  font-size: var(--fs-small); letter-spacing: .3px;
 }
 :root[data-skin="classic"] #content {
   border: 1px solid var(--bevel-hi);
