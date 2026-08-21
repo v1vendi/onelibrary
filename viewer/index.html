@@ -2,6 +2,19 @@
 <meta charset="utf-8">
 <title>OneLibrary Viewer</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+  // Resolved here rather than in initSkin() because the skin owns the whole
+  // chassis colour, not an accent. Setting it after the modules load means the
+  // page paints one skin and then repaints in the other -- a light flash on
+  // every load of a dark skin. This runs before the stylesheet below is
+  // parsed, so the first paint is already correct.
+  try {
+    document.documentElement.dataset.skin =
+      localStorage.getItem('onelibrary.skin') || 'classic';
+  } catch (e) {
+    document.documentElement.dataset.skin = 'classic';   // private mode
+  }
+</script>
 <style>
 /* ---------------------------------------------------------------------------
    Palette taken from the subject: DJ equipment, and rekordbox's own cue

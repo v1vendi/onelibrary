@@ -1074,8 +1074,11 @@ function initSkin() {
     try { localStorage.setItem('onelibrary.skin', skin); } catch { /* private mode */ }
     if (state.selected) selectTrack(state.selected);
   };
-  let saved = 'modern';
-  try { saved = localStorage.getItem('onelibrary.skin') || 'modern'; } catch { /* ignore */ }
+  // The document already carries the resolved skin: a script in the head sets
+  // it before first paint so the page does not flash the other one. This only
+  // has to agree with it and label the button.
+  let saved = document.documentElement.dataset.skin || 'classic';
+  try { saved = localStorage.getItem('onelibrary.skin') || saved; } catch { /* ignore */ }
   apply(saved);
   btn.onclick = () => apply(document.documentElement.dataset.skin === 'classic' ? 'modern' : 'classic');
 }

@@ -6,6 +6,11 @@ Browse a rekordbox **OneLibrary** export in the browser. Drag a USB stick onto
 the page and get the track list, playlists, cues, loops, beatgrid and colour
 waveforms.
 
+It also plays. A **two-deck mode** puts two players side by side with a mixer,
+beat sync and hot cues, and a **Pioneer DDJ-FLX4** drives it over Web MIDI —
+jogs, faders, EQs, pads and the browse encoder — so you can mix off a USB stick
+without installing anything.
+
 Everything runs locally. The database is decrypted **in the page** with
 WebCrypto; nothing is uploaded, and there is no server.
 
@@ -101,6 +106,44 @@ percent rather than by seeking, because a seek every few seconds is audible as
 a stutter and a tiny speed change is not. Only an error too large to walk back
 that way gets a jump. If the tempo difference is beyond the pitch range it says
 so rather than doing nothing.
+
+## Controller
+
+**Two decks** switches to the mixing layout, and a **Pioneer DDJ-FLX4** plugged
+in over USB drives it. Press *Connect FLX4* in the header; Web MIDI needs
+Chrome or Edge, and the page says so rather than failing quietly on a browser
+without it. No sysex is requested.
+
+| Control | Does |
+|---|---|
+| PLAY / CUE | transport, per deck |
+| SYNC | latch this deck to the other |
+| Performance pads | hot cues A–H |
+| Tempo fader | pitch, centre is 0% and the ends are the deck's range |
+| Channel faders, crossfader | mixer |
+| EQ knobs | 3-band; twelve o'clock is 0 dB |
+| Jog | bend while playing, scratch while touched |
+| Browse encoder, LOAD | step the track list and load a deck |
+
+The mapping is **taken from rekordbox's own controller definition**, not
+guessed — `DDJ-FLX4.midi.csv` from inside the rekordbox app bundle. Two things
+in that file shape the code:
+
+**The deck is the MIDI channel.** `PlayPause` is note `0x0B` on channel 0 for
+deck 1 and channel 1 for deck 2. The pads are the exception, answering on
+channels 7 and 9, and the mixer and browser sit on channel 6 because they
+belong to no single deck.
+
+**Faders and knobs are 14-bit.** Anything the file calls `KnobSliderHiRes`
+sends its high seven bits on the listed controller and the low seven on that
+controller plus 32, so the tempo fader resolves to 16384 steps rather than 128.
+Reading only the high byte quantises pitch to about 0.05% steps, which is
+audible as stepping when riding one deck against another.
+
+Continuous controls are mapped so the hardware's physical centre matches the
+software's neutral, and the EQs are asymmetric the way a DJ mixer is — a kill
+at −26 dB below centre against +12 dB of boost above it. Jogs move the playhead
+by time rather than by beats, so a nudge feels the same whatever the tempo.
 
 ## Why not `<audio>`
 
@@ -201,9 +244,14 @@ back with the same code that wrote it.
 
 ## Skins
 
-Winamp's whole identity was skinning, so the classic look ships as a switch
-rather than a replacement — the toggle sits in the header and the choice
-persists.
+The classic Winamp look is the **default**. A modern skin ships alongside it —
+the toggle sits in the header and the choice persists — because Winamp's whole
+identity was skinning, so this is a switch rather than a replacement.
+
+Which skin applies is resolved by a small script in the document head rather
+than after the modules load. The skin owns the whole chassis colour, not an
+accent, so deciding it later means painting one skin and repainting in the
+other: a light flash on every load.
 
 The classic skin is a **hand-built homage, not a port**. Real Winamp skins are
 bitmap sets owned by Nullsoft and its successors, and none of that artwork is

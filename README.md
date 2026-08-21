@@ -8,14 +8,17 @@ rekordbox's legacy DeviceSQL (`export.pdb`) USB exports.
 > itself is still being reverse-engineered. Nothing here is stable yet.
 
 **[Open the viewer →](https://v1vendi.github.io/onelibrary/)** — drag a USB
-stick onto the page. Everything runs locally; nothing is uploaded.
+stick onto the page and browse the library, then mix off it: a two-deck player
+with a mixer, beat sync and hot cues, playable from a **Pioneer DDJ-FLX4** over
+Web MIDI. Everything runs locally; nothing is uploaded, and there is nothing to
+install.
 
 ## What is here
 
 | | |
 |---|---|
 | **[`python/`](python)** | The `onelibrary` library and CLI — read and write exports, resolve keys, parse ANLZ. [README](python/README.md) |
-| **[`viewer/`](viewer)** | A browser viewer for the same format — decrypts in the page with WebCrypto, no server. [README](viewer/README.md) |
+| **[`viewer/`](viewer)** | A browser viewer and two-deck player for the same format — decrypts in the page with WebCrypto, no server, DDJ-FLX4 over Web MIDI. [README](viewer/README.md) |
 | **[`spec/`](spec)** | The format specification: [`ONELIBRARY.md`](spec/ONELIBRARY.md) and the captured [`schema.sql`](spec/schema.sql) |
 | **[`docs/`](docs)** | Reverse-engineering method — [`CAPTURING.md`](docs/CAPTURING.md) |
 
