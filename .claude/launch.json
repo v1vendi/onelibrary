@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "viewer", "runtimeExecutable": "python3", "runtimeArgs": ["-m","http.server","8777","--directory","/Users/kamsa/onelibrary/viewer"], "port": 8777 }
+    { "name": "viewer", "runtimeExecutable": "python3", "runtimeArgs": ["-m","http.server","8777","--directory","viewer"], "port": 8777 }
   ]
 }
