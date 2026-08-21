@@ -7,6 +7,9 @@ python/tests/corpus/
 # TESTDEV) and is what `npm test` decrypts. Without it a fresh clone cannot
 # run the viewer suite, and neither can CI.
 !viewer/test/fixtures/sample.db
+# ...and the sample library the page offers when a visitor has no device of
+# their own. Synthesised, not a capture: see viewer/sample/CREDITS.md.
+!viewer/sample/PIONEER/rekordbox/exportLibrary.db
 __pycache__/
 *.pyc
 .venv/

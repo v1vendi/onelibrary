@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { decrypt, DecryptError } from '../src/sqlcipher.js';
-import { SQLiteDatabase, parseColumns } from '../src/sqlite.js';
+import { SQLiteDatabase, parseColumns, rowidAlias } from '../src/sqlite.js';
 import { parseAnlz, parseSections, CUE_TYPE } from '../src/anlz.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -100,6 +100,40 @@ test('parseColumns handles a real CREATE TABLE', () => {
     parseColumns('CREATE TABLE t(a integer primary key, b varchar, c integer)'),
     ['a', 'b', 'c']
   );
+});
+
+test('parseColumns unquotes identifiers', () => {
+  // Regression: rekordbox writes these bare, but a database built through a
+  // tool that quotes mixed-case names writes "analysisDataFilePath" -- and the
+  // quotes became part of the key, so the field read back as undefined and
+  // every track silently lost its analysis, beatgrid and cues.
+  assert.deepEqual(
+    parseColumns('CREATE TABLE content(content_id INTEGER, "analysisDataFilePath" VARCHAR, `djComment` VARCHAR, [rating] INTEGER)'),
+    ['content_id', 'analysisDataFilePath', 'djComment', 'rating']
+  );
+});
+
+test('parseColumns skips table-level constraints', () => {
+  // `PRIMARY KEY (a)` is a clause in the same comma list, not a column; its
+  // first word was being taken as a column named PRIMARY.
+  assert.deepEqual(
+    parseColumns('CREATE TABLE t(a INTEGER, b VARCHAR, PRIMARY KEY (a), FOREIGN KEY(b) REFERENCES u(x), UNIQUE (b), CHECK (a > 0))'),
+    ['a', 'b']
+  );
+});
+
+test('parseColumns does not split inside parentheses', () => {
+  // A comma inside DECIMAL(10,2) split one column in two and shifted every
+  // column after it by one position.
+  assert.deepEqual(
+    parseColumns('CREATE TABLE t(a DECIMAL(10,2), b VARCHAR(255), c INTEGER)'),
+    ['a', 'b', 'c']
+  );
+});
+
+test('rowidAlias sees through quoting', () => {
+  assert.equal(rowidAlias('CREATE TABLE t("content_id" INTEGER PRIMARY KEY, b VARCHAR)'), 'content_id');
+  assert.equal(rowidAlias('CREATE TABLE t(a INT PRIMARY KEY, b VARCHAR)'), null);
 });
 
 // -- anlz -------------------------------------------------------------------

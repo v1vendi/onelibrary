@@ -14,6 +14,11 @@ without installing anything.
 Everything runs locally. The database is decrypted **in the page** with
 WebCrypto; nothing is uploaded, and there is no server.
 
+No rekordbox device to hand? The page offers a **sample library** -- three
+open-licensed tracks with analysis, so it can be tried without one. See
+[`sample/CREDITS.md`](sample/CREDITS.md) for the attribution and for what is
+real and what is synthesised.
+
 Part of the [onelibrary](https://github.com/v1vendi/onelibrary) project, whose
 Python library and CLI live in [`python/`](../python) and whose format
 specification lives in [`spec/ONELIBRARY.md`](../spec/ONELIBRARY.md).

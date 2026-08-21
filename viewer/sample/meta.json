@@ -1,0 +1,29 @@
+[
+  {
+    "title": "Electrodoodle",
+    "artist": "Kevin MacLeod",
+    "album": "Incompetech",
+    "genre": "Electronic",
+    "comment": "CC BY 4.0 - incompetech.com",
+    "rating": 5,
+    "color_id": 3
+  },
+  {
+    "title": "Cipher",
+    "artist": "Kevin MacLeod",
+    "album": "Electronic Light",
+    "genre": "Electronic",
+    "comment": "CC BY 4.0 - incompetech.com",
+    "rating": 4,
+    "color_id": 1
+  },
+  {
+    "title": "Cold Funk",
+    "artist": "Kevin MacLeod",
+    "album": "Funkorama",
+    "genre": "Funk",
+    "comment": "CC BY 4.0 - incompetech.com",
+    "rating": 4,
+    "color_id": 5
+  }
+]

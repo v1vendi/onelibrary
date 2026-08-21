@@ -14,7 +14,7 @@
  * The result is syntax-checked before it is written. A bundler that cannot
  * produce a parsable file must fail the build, not ship one.
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -77,3 +77,12 @@ const artifact = html
   .replace(/<meta name="viewport"[^>]*>\s*/i, '');
 writeFileSync(join(root, 'dist', 'artifact.html'), artifact);
 console.log(`dist/artifact.html ${(artifact.length / 1024).toFixed(1)} KB`);
+
+// The sample library the page offers when a visitor has no device of their own.
+// It is fetched at a path relative to the page, so it has to sit beside the
+// built page rather than beside the source -- dist/ is what gets deployed, and
+// a page that offers a sample and then 404s is worse than not offering one.
+if (existsSync(join(root, 'sample'))) {
+  cpSync(join(root, 'sample'), join(root, 'dist', 'sample'), { recursive: true });
+  console.log('dist/sample/        copied');
+}

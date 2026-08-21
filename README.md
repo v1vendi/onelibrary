@@ -11,7 +11,8 @@ rekordbox's legacy DeviceSQL (`export.pdb`) USB exports.
 stick onto the page and browse the library, then mix off it: a two-deck player
 with a mixer, beat sync and hot cues, playable from a **Pioneer DDJ-FLX4** over
 Web MIDI. Everything runs locally; nothing is uploaded, and there is nothing to
-install.
+install. No device to hand? The page loads a **sample library** so you can try
+it without one.
 
 ## What is here
 

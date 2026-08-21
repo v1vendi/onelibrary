@@ -199,15 +199,49 @@ export class SQLiteDatabase {
  * other type do not, and are stored in the record normally.
  */
 export function rowidAlias(sql) {
-  return /[(,]\s*`?(\w+)`?\s+integer\s+primary\s+key/i.exec(sql || '')?.[1] ?? null;
+  return /[(,]\s*["`[]?(\w+)["`\]]?\s+integer\s+primary\s+key/i.exec(sql || '')?.[1] ?? null;
 }
 
-/** Extract column names from a CREATE TABLE statement. */
+/** Table-level constraints, which are clauses in the column list but not columns. */
+const CONSTRAINT = /^(constraint|primary|unique|check|foreign)\b/i;
+
+/** Strip SQL identifier quoting: "name", `name`, [name]. */
+function unquote(name) {
+  const m = /^"(.*)"$|^`(.*)`$|^\[(.*)\]$/s.exec(name);
+  return m ? (m[1] ?? m[2] ?? m[3]).replace(/""/g, '"') : name;
+}
+
+/**
+ * Extract column names from a CREATE TABLE statement.
+ *
+ * Splitting on every comma and taking the first word is not enough, and the
+ * ways it fails are silent -- a column simply goes missing from every row:
+ *
+ * - **Quoted identifiers.** rekordbox writes `analysisDataFilePath` bare, but
+ *   anything built through a tool that quotes mixed-case names writes
+ *   `"analysisDataFilePath"`, and the quotes became part of the key, so the
+ *   field could never be read back.
+ * - **Table constraints.** A trailing `PRIMARY KEY (content_id)` is a clause in
+ *   the same list, and its first word was being taken as a column called
+ *   `PRIMARY`.
+ * - **Commas inside parentheses**, as in `DECIMAL(10,2)`, split one column into
+ *   two and shifted every column after it by one.
+ */
 export function parseColumns(sql) {
   const m = /\(([\s\S]*)\)\s*$/.exec(sql || '');
   if (!m) return [];
-  return m[1]
-    .split(',')
-    .map((s) => s.trim().split(/\s+/)[0])
+  const parts = [];
+  let depth = 0, current = '';
+  for (const ch of m[1]) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) { parts.push(current); current = ''; continue; }
+    current += ch;
+  }
+  parts.push(current);
+  return parts
+    .map((s) => s.trim())
+    .filter((s) => s && !CONSTRAINT.test(s))
+    .map((s) => unquote(/^"[^"]*"|^`[^`]*`|^\[[^\]]*\]|^\S+/.exec(s)[0]))
     .filter(Boolean);
 }

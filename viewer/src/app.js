@@ -312,6 +312,48 @@ function renderList() {
   list.append(table);
 }
 
+/**
+ * Fetch the bundled sample device and load it as if it had been dropped.
+ *
+ * The files are served beside the page rather than embedded: the audio is most
+ * of the payload, and inlining it would cost every visitor the download whether
+ * or not they ever press the button.
+ *
+ * `manifest.json` lists the tree because a static host has no directory
+ * listing, and the viewer has to know what the device contains before it can
+ * read any of it.
+ */
+async function loadSampleLibrary(btn) {
+  const base = 'sample/';
+  const original = btn.textContent;
+  btn.disabled = true;
+  try {
+    status('Fetching the sample library…');
+    const names = await (await fetch(base + 'manifest.json')).json();
+    // Only the device tree itself. CREDITS.md and meta.json sit alongside it
+    // for people reading the repository, and are not part of the device.
+    const wanted = names.filter((n) => /^(PIONEER|Contents)\//.test(n));
+    const files = new Map();
+    let done = 0;
+    for (const rel of wanted) {
+      // Each path segment is encoded separately: the names carry spaces, and
+      // encoding the whole path would take the separators with it.
+      const url = base + rel.split('/').map(encodeURIComponent).join('/');
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${rel} — ${res.status}`);
+      const blob = await res.blob();
+      files.set(rel.toLowerCase(), new File([blob], rel.split('/').pop()));
+      btn.textContent = `Loading… ${++done}/${wanted.length}`;
+    }
+    await load(files);
+  } catch (err) {
+    status(`Could not load the sample library: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
 /** Locate a device file by its stored path, which is device-relative. */
 function deviceFile(storedPath) {
   if (!storedPath) return null;
@@ -1139,6 +1181,9 @@ export function init() {
     }
     await load(out);
   });
+
+  const sampleBtn = $('#trysample');
+  if (sampleBtn) sampleBtn.onclick = () => loadSampleLibrary(sampleBtn);
 
   const midiBtn = $('#midi');
   if (midiBtn) {
