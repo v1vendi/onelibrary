@@ -20,6 +20,13 @@ dependencies = [
 [project.optional-dependencies]
 anlz = ["pyrekordbox>=0.4"]
 
+[project.urls]
+Homepage = "https://github.com/v1vendi/onelibrary"
+Repository = "https://github.com/v1vendi/onelibrary"
+Issues = "https://github.com/v1vendi/onelibrary/issues"
+Specification = "https://github.com/v1vendi/onelibrary/blob/master/spec/ONELIBRARY.md"
+Viewer = "https://v1vendi.github.io/onelibrary/"
+
 [project.scripts]
 onelibrary = "onelibrary.cli:main"
 
