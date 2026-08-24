@@ -1,6 +1,22 @@
 #!/usr/bin/env python3
 """Build a playable sample OneLibrary device from open-licensed audio.
 
+.. warning::
+
+   **Superseded by ``import_sample_library.py`` for producing the shipped
+   sample.** The tempo detection below is close but not exact -- it found
+   119.85, 149.80 and 111.95 for tracks cut at 120, 150 and 112 -- and a grid
+   built on a tempo 0.2 BPM out is three quarters of a beat from the music by
+   the end of a four-minute track. Correct at the first downbeat, visibly and
+   audibly wrong at the last.
+
+   Nothing here detects that, because the same wrong tempo goes into both the
+   stored value and the grid, so they agree with each other perfectly. Getting
+   it right means real analysis, so the sample now comes out of rekordbox.
+
+   This is kept because the writers below document the ANLZ binary layout,
+   which is useful independently of where the numbers come from.
+
 The viewer is useless to anyone who does not already own a OneLibrary export,
 which is most people: a visitor lands on a dropzone with nothing to drop. This
 produces a small device tree -- database, analysis, audio -- that the page can
