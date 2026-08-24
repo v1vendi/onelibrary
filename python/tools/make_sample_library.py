@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
 """Build a playable sample OneLibrary device from open-licensed audio.
 
-.. warning::
+Analysis is synthesised here, which is the hard part and was wrong twice. Both
+failures and their fixes are written up on the functions that carry them --
+:func:`onset_envelope` on log compression, :func:`snap_tempo` on rounding, and
+:func:`estimate_downbeat` on the bar. The short version: a grid can be built on
+a tempo 0.15 BPM out and look right for the first bars, and a grid can have
+every beat in the right place and still put the bar lines three beats out.
 
-   **Superseded by ``import_sample_library.py`` for producing the shipped
-   sample.** The tempo detection below is close but not exact -- it found
-   119.85, 149.80 and 111.95 for tracks cut at 120, 150 and 112 -- and a grid
-   built on a tempo 0.2 BPM out is three quarters of a beat from the music by
-   the end of a four-minute track. Correct at the first downbeat, visibly and
-   audibly wrong at the last.
-
-   Nothing here detects that, because the same wrong tempo goes into both the
-   stored value and the grid, so they agree with each other perfectly. Getting
-   it right means real analysis, so the sample now comes out of rekordbox.
-
-   This is kept because the writers below document the ANLZ binary layout,
-   which is useful independently of where the numbers come from.
+Where matching rekordbox exactly matters more than having a sample at all,
+prefer ``import_sample_library.py``, which packages a real export rather than
+computing anything.
 
 The viewer is useless to anyone who does not already own a OneLibrary export,
 which is most people: a visitor lands on a dropzone with nothing to drop. This
@@ -79,8 +74,18 @@ def decode(path: Path) -> np.ndarray:
 
 
 def transcode(src: Path, dst: Path, bitrate: str = "128k") -> None:
-    """Re-encode for the web. 320 kbps masters are needlessly heavy to serve."""
+    """Re-encode for the web. 320 kbps masters are needlessly heavy to serve.
+
+    A source already at or under the target is copied rather than re-encoded.
+    Running a 128 kbps file through the encoder again does not make it smaller,
+    it just spends another generation of lossy coding on it -- and re-running
+    this script is routine, so that loss would compound every time.
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
+    target = int(bitrate.rstrip("k")) * 1000
+    if src.suffix.lower() == ".mp3" and (source_bitrate(src) or 1 << 30) <= target * 1.05:
+        shutil.copy2(src, dst)
+        return
     subprocess.run(
         ["ffmpeg", "-v", "error", "-y", "-i", str(src),
          "-codec:a", "libmp3lame", "-b:a", bitrate, str(dst)],
@@ -88,28 +93,60 @@ def transcode(src: Path, dst: Path, bitrate: str = "128k") -> None:
     )
 
 
+def source_bitrate(path: Path) -> int | None:
+    """Bits a second, via ffprobe, or None if it cannot be read."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=bit_rate",
+             "-of", "default=nw=1:nk=1", str(path)],
+            capture_output=True, text=True, check=True).stdout.strip()
+        return int(out)
+    except (subprocess.CalledProcessError, ValueError, FileNotFoundError):
+        return None
+
+
 # ---------------------------------------------------------------------------
-# Tempo
+# Beat tracking
 # ---------------------------------------------------------------------------
 
+#: Frames a second in the onset envelope. 256 samples is 5.8 ms, fine enough
+#: to place a beat well inside the ear's tolerance.
+HOP = 256
+WIN = 1024
+FREQS = np.fft.rfftfreq(WIN, 1 / SR)
 
-def onset_envelope(x: np.ndarray, hop: int = 512) -> tuple[np.ndarray, float]:
-    """Spectral flux: how much the spectrum brightens frame to frame.
 
-    Beat tracking off raw amplitude follows the bass and misses percussion that
-    is loud in the top end but quiet overall, so this rectifies the *increase*
-    in each bin -- which is what an onset is -- rather than level.
-    """
-    win = 1024
-    n = 1 + (len(x) - win) // hop
+def spectrogram(x: np.ndarray) -> np.ndarray:
+    n = 1 + (len(x) - WIN) // HOP
     frames = np.lib.stride_tricks.as_strided(
-        x, shape=(n, win), strides=(x.strides[0] * hop, x.strides[0])
+        x, shape=(n, WIN), strides=(x.strides[0] * HOP, x.strides[0])
     )
-    spec = np.abs(np.fft.rfft(frames * np.hanning(win), axis=1))
-    flux = np.diff(spec, axis=0, prepend=spec[:1])
-    env = np.maximum(flux, 0).sum(axis=1)
-    env -= env.mean()
-    return env, SR / hop
+    return np.abs(np.fft.rfft(frames * np.hanning(WIN), axis=1))
+
+
+def onset_envelope(spec: np.ndarray, lo_hz: float = 0.0,
+                   hi_hz: float = SR / 2) -> np.ndarray:
+    """Spectral flux over a band: how much it brightens frame to frame.
+
+    Two details decide whether this finds the beat or the melody.
+
+    **Magnitudes are log-compressed first.** Summing linear magnitudes lets a
+    loud synth stab count for more than a kick, and the grid then gets fitted
+    to the melody -- which is how one of the sample tracks ended up with a
+    phase half a beat out, locked to an off-beat lead. Compression puts a quiet
+    drum and a loud lead on comparable footing, which is what a listener does.
+    Measured across the three sample tracks it collapsed the disagreement
+    between the low, mid and high bands about where the beat sits from 0.485
+    of a beat to 0.011.
+
+    **A local mean is subtracted.** Otherwise a loud chorus outweighs a quiet
+    intro and the grid is fitted to the loudest thirty seconds of the track.
+    """
+    sel = (FREQS >= lo_hz) & (FREQS < hi_hz)
+    band = np.log1p(10.0 * spec[:, sel])
+    flux = np.maximum(np.diff(band, axis=0, prepend=band[:1]), 0).sum(axis=1)
+    k = int(2.0 * SR / HOP) | 1
+    return np.maximum(flux - np.convolve(flux, np.ones(k) / k, mode="same"), 0)
 
 
 def estimate_tempo(env: np.ndarray, rate: float,
@@ -117,63 +154,127 @@ def estimate_tempo(env: np.ndarray, rate: float,
     """Comb-scored autocorrelation: the tempo whose whole grid is supported.
 
     A bare autocorrelation peak is not the tempo. Its harmonics are peaks too,
-    and often taller ones -- on the sample material the strongest lag came out
-    at 79.5 BPM with 161.5 and 120.2 (x2 and x1.5) close behind, so simply
-    taking the maximum inside a one-octave window picks whichever harmonic the
-    window happens to admit, which is how a 159 BPM track reads as 120.
-
-    Scoring a candidate by summing the autocorrelation at its first four beat
-    multiples resolves it: the true tempo is supported at every multiple, while
-    a harmonic lands between peaks at some of them and loses.
+    and often taller ones, so taking the maximum inside a one-octave window
+    picks whichever harmonic the window happens to admit -- which is how a
+    159 BPM track reads as 120. Scoring a candidate by the autocorrelation at
+    its first eight beat multiples resolves it: the true tempo is supported at
+    every multiple, while a harmonic lands between peaks at some of them.
     """
     ac = np.correlate(env, env, mode="full")[len(env) - 1:]
     ac = ac / (np.abs(ac).max() or 1.0)
-    cands = np.arange(lo, hi, 0.05)
+    cands = np.arange(lo, hi, 0.02)
     best, best_score = 120.0, -np.inf
     for bpm in cands:
         lag = 60.0 * rate / bpm
-        idx = (lag * np.arange(1, 5)).round().astype(int)
+        idx = (lag * np.arange(1, 9)).round().astype(int)
         idx = idx[idx < len(ac)]
         if not len(idx):
             continue
-        score = ac[idx].sum()
+        score = float(ac[idx].mean())
         if score > best_score:
             best, best_score = float(bpm), score
     return best
 
 
-def beat_confidence(env: np.ndarray, rate: float, bpm: float, first: float) -> float:
-    """Share of the onset energy that the chosen grid actually sits on.
-
-    A grid can be self-consistent and still be wrong about the music, so this
-    compares energy at the beat positions against energy everywhere -- a value
-    near 1 means the beats are where the onsets are.
-    """
+def beat_frames(n: int, rate: float, bpm: float, phase: float) -> np.ndarray:
     period = 60.0 / bpm * rate
-    n = int((len(env) - first * rate) / period)
-    if n < 4:
-        return 0.0
-    idx = np.clip((first * rate + period * np.arange(n)).astype(int), 0, len(env) - 1)
-    pos = np.maximum(env, 0)
-    on = pos[idx].mean()
-    return float(on / (pos.mean() or 1.0))
+    count = int((n - phase) / period)
+    return (phase + period * np.arange(max(count, 0))).round().astype(int)
+
+
+def grid_score(env: np.ndarray, rate: float, bpm: float, phase: float,
+               halo: int = 1) -> float:
+    """Onset energy a grid captures, tolerant of a frame of jitter.
+
+    The halo matters: sampling single frames makes the score jump around on
+    timing error small enough to be inaudible, and the search then settles on
+    whichever offset happened to hit its frames squarely.
+    """
+    idx = beat_frames(len(env), rate, bpm, phase)
+    if len(idx) < 4:
+        return -np.inf
+    idx = np.clip(idx, halo, len(env) - 1 - halo)
+    return float(np.stack([env[idx + d] for d in range(-halo, halo + 1)])
+                 .max(axis=0).mean())
+
+
+def snap_tempo(env: np.ndarray, rate: float, bpm: float) -> float:
+    """Pull a near-round tempo onto the round one, if the music agrees.
+
+    Produced music is cut to a whole or half BPM almost without exception, and
+    an estimate 0.04 BPM shy of one is the search's resolution showing, not the
+    track. Left alone it is ruinous: a grid at 149.96 against a track at 150
+    is three quarters of a beat adrift by the end. The snap is only taken if
+    the rounded tempo still explains the onsets as well, so genuinely off-grid
+    material -- live, acoustic, anything not made to a click -- is left alone.
+    """
+    near = round(bpm * 2) / 2
+    if abs(bpm - near) >= 0.6:
+        return bpm
+    here = grid_score(env, rate, bpm, estimate_phase(env, rate, bpm))
+    there = grid_score(env, rate, near, estimate_phase(env, rate, near))
+    return near if there >= here * 0.98 else bpm
 
 
 def estimate_phase(env: np.ndarray, rate: float, bpm: float) -> float:
-    """Where the first beat falls, by scoring every offset in one beat period.
-
-    The grid is fixed once tempo is known, so the only freedom left is its
-    offset; the best one is simply the alignment whose beat positions land on
-    the most onset energy.
-    """
+    """Where the first beat falls, in frames, by scoring every offset."""
     period = 60.0 / bpm * rate
-    n = int(len(env) / period)
-    if n < 2:
+    if int(len(env) / period) < 2:
         return 0.0
-    offsets = np.linspace(0, period, 64, endpoint=False)
-    idx = (offsets[:, None] + period * np.arange(n)[None, :]).astype(int)
-    idx = np.clip(idx, 0, len(env) - 1)
-    return float(offsets[np.argmax(env[idx].sum(axis=1))] / rate)
+    offsets = np.arange(0, period, 0.5)
+    scores = [grid_score(env, rate, bpm, o) for o in offsets]
+    return float(offsets[int(np.argmax(scores))])
+
+
+def music_entry_beat(env: np.ndarray, rate: float, bpm: float,
+                     phase: float) -> float | None:
+    """Which beat the track stops being silence on."""
+    if not len(env) or env.max() <= 0:
+        return None
+    loud = np.flatnonzero(env > env.max() * 0.10)
+    if not len(loud):
+        return None
+    return float((loud[0] - phase) / (60.0 / bpm * rate))
+
+
+def estimate_downbeat(low: np.ndarray, rate: float, bpm: float, phase: float,
+                      entry: float | None = None) -> tuple[int, float]:
+    """Which of the four beats starts the bar, and how clear-cut it is.
+
+    The grid says where the beats are; it does not say which one begins the
+    bar, and nothing else here works that out -- so every bar line lands on
+    whichever beat the track happened to start on. On one sample track that put
+    the downbeat three beats early and swallowed a three-beat intro whole.
+
+    The kick decides it, so this reads the low band alone. Across the full
+    spectrum the melody spreads energy evenly over all four positions and the
+    measurement says nothing; in the low band the same track separates its bar
+    position from the rest by a factor of five.
+
+    Returns the offset and the margin over the runner-up, which is worth
+    printing: where a track is genuinely ambiguous, the margin says so.
+    """
+    idx = beat_frames(len(low), rate, bpm, phase)
+    if len(idx) < 8:
+        return 0, 0.0
+    idx = np.clip(idx, 1, len(low) - 2)
+    strength = np.maximum.reduce([low[idx - 1], low[idx], low[idx + 1]])
+    per = np.array([strength[k::4].mean() for k in range(4)])
+    order = np.argsort(per)[::-1]
+    runner = per[order[1]] or 1e-12
+    margin = float(per[order[0]] / runner)
+
+    # When the kick cannot separate two positions, ask where the music comes
+    # in: a track that opens with silence almost always enters on a downbeat.
+    # This is only a tiebreak. It is wrong on its own -- a track whose intro is
+    # three beats of something enters three beats before the bar, which is the
+    # very case the kick gets right -- so it is consulted only when the kick
+    # has nothing to say.
+    if margin < 1.3 and entry is not None:
+        want = int(round(entry)) % 4
+        if want in (int(order[0]), int(order[1])):
+            return want, margin
+    return int(order[0]), margin
 
 
 # ---------------------------------------------------------------------------
@@ -344,15 +445,27 @@ CUE_COLOURS = [(230, 40, 40), (40, 190, 90), (40, 140, 230), (230, 170, 40)]
 def analyse(src: Path, index: int, meta: dict, root: Path) -> Track:
     x = decode(src)
     duration = len(x) / SR
-    env, rate = onset_envelope(x)
-    bpm = estimate_tempo(env, rate)
-    first = estimate_phase(env, rate, bpm)
-    print(f"  {src.name}: {duration:6.1f}s  {bpm:6.2f} BPM  first beat {first:.3f}s")
+    spec = spectrogram(x)
+    rate = SR / HOP
+    env = onset_envelope(spec)
+    bpm = snap_tempo(env, rate, estimate_tempo(env, rate))
+    phase = estimate_phase(env, rate, bpm)
+    entry = music_entry_beat(env, rate, bpm, phase)
+    down, margin = estimate_downbeat(
+        onset_envelope(spec, 0, 250), rate, bpm, phase, entry)
+    first = phase / rate
+    print(f"  {src.name}: {duration:6.1f}s  {bpm:6.2f} BPM  "
+          f"first beat {first:.3f}s  downbeat +{down} (x{margin:.1f})")
+    if margin < 1.3:
+        print("    ! the bar position is a close call here; check it by ear")
 
     period = 60.0 / bpm
     n_beats = int((duration - first) / period)
+    # The bar is numbered from the detected downbeat, not from whichever beat
+    # the track happens to open on -- a three-beat intro is numbered 2, 3, 4
+    # and the music lands on 1, which is where the bar lines belong.
     beats = [
-        (i % 4 + 1, bpm, int(round((first + i * period) * 1000)))
+        ((i - down) % 4 + 1, bpm, int(round((first + i * period) * 1000)))
         for i in range(max(0, n_beats))
     ]
 

@@ -89,6 +89,11 @@ def read_beatgrid(dat: Path) -> list[tuple[int, float, int]]:
     return []
 
 
+def is_variable(beats: list[tuple[int, float, int]]) -> bool:
+    """Whether the grid changes tempo, so one stored value cannot describe it."""
+    return len({round(bpm, 2) for _, bpm, _ in beats}) > 1
+
+
 def grid_drift(beats: list[tuple[int, float, int]], stored_bpm: float) -> float | None:
     """How far the stored tempo has slipped from the grid, in beats.
 
@@ -97,13 +102,14 @@ def grid_drift(beats: list[tuple[int, float, int]], stored_bpm: float) -> float 
     the two agree; where they do not, this is the size of the disagreement by
     the last beat, which is where it is largest and most audible.
 
-    Returns ``None`` for a grid too short to say anything about, and 0.0 for a
-    variable-tempo grid, where a single stored tempo is not meant to match.
+    ``None`` means the grid is too short, or varies in tempo, to say anything.
+    Zero is a real answer -- an exact grid -- and is deliberately not used as
+    the "cannot say" value, which is a mistake this function made once: a
+    perfect grid drifts 0.000, and reporting that as "variable tempo" hid two
+    correct tracks behind a wrong explanation.
     """
-    if len(beats) < 2 or not stored_bpm:
+    if len(beats) < 2 or not stored_bpm or is_variable(beats):
         return None
-    if len({round(bpm, 2) for _, bpm, _ in beats}) > 1:
-        return 0.0        # genuinely variable; the stored value is nominal
     span_ms = beats[-1][2] - beats[0][2]
     if span_ms <= 0:
         return None
@@ -195,10 +201,10 @@ def main() -> int:
             if not beats:
                 note = "no beatgrid"
                 problems.append(f"{title}: no beatgrid in {dat.name}")
+            elif is_variable(beats):
+                note = f"{len(beats)} beats, variable tempo"
             elif drift is None:
                 note = f"{len(beats)} beats, too short to check"
-            elif drift == 0.0:
-                note = f"{len(beats)} beats, variable tempo"
             else:
                 note = f"{len(beats)} beats, drifts {drift:.3f} beat"
                 if drift > DRIFT_WARN_BEATS:
