@@ -17,6 +17,9 @@ up in the sample -- which is the point.
     # and export to a USB stick or SD card
     python tools/import_sample_library.py /Volumes/SAMPLE -o ../viewer/sample
 
+``docs/SAMPLE_LIBRARY.md`` walks through the rekordbox half, including which
+licences allow the audio to be redistributed at all.
+
 It verifies before it copies, though only so far. The stored tempo is checked
 against the beatgrid actually written, which catches a corrupt or mismatched
 grid -- but *not* a grid that is wrong about the music. A detector that picks

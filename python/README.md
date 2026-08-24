@@ -107,6 +107,11 @@ python tools/diff_exports.py tests/corpus/00-baseline tests/corpus/01-one-hotcue
 Captures contain personal music metadata; `tests/corpus/` is gitignored. See
 [`docs/CAPTURING.md`](../docs/CAPTURING.md).
 
+`tools/import_sample_library.py` packages a real rekordbox export into the
+sample library the viewer ships; see
+[`docs/SAMPLE_LIBRARY.md`](../docs/SAMPLE_LIBRARY.md) for how to produce the
+export it consumes.
+
 ## License
 
 MIT
