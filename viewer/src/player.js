@@ -162,6 +162,24 @@ export class Player {
     this.emit();
   }
 
+  /**
+   * Let go of the decoded audio, not just the playing source.
+   *
+   * `stop()` deliberately keeps the buffer, because stopping is what pause and
+   * seek do and decoding again would cost hundreds of milliseconds. Emptying a
+   * deck is the other case: the audio then belongs to a track -- sometimes to a
+   * whole device -- that the page no longer has loaded, so holding it both
+   * wastes tens of megabytes and leaves something playable that nothing on
+   * screen refers to.
+   */
+  unload() {
+    this.stop();
+    this.buffer = null;
+    this.envelope = null;
+    this.cues = [];
+    this.emit();
+  }
+
   stop() {
     if (this.source) {
       this.source.onended = null;

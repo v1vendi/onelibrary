@@ -162,6 +162,19 @@ async function load(files) {
     return;
   }
 
+  // Empty the decks, now that the new database is known to be readable and the
+  // old one is definitely being replaced. A loaded deck holds the previous
+  // device's decoded audio, beatgrid and artwork, while everything drawn around
+  // it -- title, artist, tempo, the grid itself -- is re-resolved against the
+  // database that just replaced it. Left alone the deck keeps playing the old
+  // track underneath the new library's grid, which is every part of the page
+  // disagreeing with every other at once. Done after the error returns above,
+  // so a device that fails to open leaves what is playing alone.
+  for (const deck of Object.values(decks)) {
+    if (deck.syncOn) deck.disableSync();
+    deck.unload();
+  }
+
   buildModel();
   render();
   const anlzCount = [...files.keys()].filter((p) => p.includes('anlz')).length;

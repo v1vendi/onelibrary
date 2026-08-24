@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import shutil
 import struct
 import subprocess
@@ -55,6 +56,13 @@ SR = 44100
 COLS_PER_SEC = 150
 #: The preview waveform is the whole track in a fixed 400 columns.
 PREVIEW_COLS = 400
+#: PWV2 is the same thing again at 100 columns -- what a player shows when the
+#: strip is tiny. Same byte layout as PWAV, a quarter of the width.
+TINY_COLS = 100
+#: PVBR is a 400-entry seek table for variable-bitrate files, followed by the
+#: track length in samples. Constant-bitrate exports leave the table empty but
+#: still carry the section and still fill in the length.
+VBR_ENTRIES = 400
 NO_LOOP = 0xFFFFFFFF
 
 
@@ -64,11 +72,33 @@ NO_LOOP = 0xFFFFFFFF
 
 
 def decode(path: Path) -> np.ndarray:
-    """Whole file as mono float32 at :data:`SR`, via ffmpeg."""
+    """Whole file as mono float32 at :data:`SR`, via ffmpeg.
+
+    Gapless playback information is stripped first, for MP3 sources. A LAME
+    encoder writes a tag saying how many samples to drop from the front and the
+    end -- 1105 and 47 in the sample material -- and ffmpeg honours it.
+    rekordbox does not: measured against its own exports of these same files,
+    both its beat times and its waveform column counts are counted from the
+    untrimmed stream. Analysing the trimmed one puts every timestamp 25 ms
+    early and leaves the track a whole MP3 frame shorter than rekordbox
+    believes it is, which is four waveform columns and, at the end of the
+    track, a missing beat.
+    """
+    src = str(path)
+    stdin = None
+    if path.suffix.lower() == ".mp3":
+        # Re-muxing without the Xing/LAME header is what removes the trim; the
+        # audio frames themselves are copied untouched.
+        stdin = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", src, "-c", "copy",
+             "-write_xing", "0", "-f", "mp3", "-"],
+            capture_output=True, check=True,
+        ).stdout
+        src = "pipe:0"
     out = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", str(path), "-f", "f32le",
+        ["ffmpeg", "-v", "error", "-i", src, "-f", "f32le",
          "-acodec", "pcm_f32le", "-ac", "1", "-ar", str(SR), "-"],
-        capture_output=True, check=True,
+        input=stdin, capture_output=True, check=True,
     ).stdout
     return np.frombuffer(out, dtype="<f4")
 
@@ -113,6 +143,11 @@ def source_bitrate(path: Path) -> int | None:
 #: to place a beat well inside the ear's tolerance.
 HOP = 256
 WIN = 1024
+#: A spectrogram frame spans WIN samples but is indexed by its first, so the
+#: energy it reports is centred half a window later. Beat times land that much
+#: early unless it is put back -- 11.6 ms, which was most of what still stood
+#: between these grids and rekordbox's own after the decode was fixed.
+FRAME_CENTRE_FRAMES = WIN / (2 * HOP)
 FREQS = np.fft.rfftfreq(WIN, 1 / SR)
 
 
@@ -375,6 +410,22 @@ def _pwav(data: bytes) -> bytes:
     return _section(b"PWAV", struct.pack(">II", len(data), 0x00010000), data)
 
 
+def _pwv2(data: bytes) -> bytes:
+    return _section(b"PWV2", struct.pack(">II", len(data), 0x00010000), data)
+
+
+def _pvbr(n_samples: int) -> bytes:
+    """The seek table, empty, with the sample count on the end.
+
+    Every constant-bitrate export compared had the same shape: 400 zeroed
+    entries and then one big-endian word. That word is the untrimmed length in
+    samples -- 7324416, 10199808 and 12714624 against MP3 frame counts of 6358,
+    8854 and 11037 at 1152 samples a frame, which is exact in all three.
+    """
+    return _section(b"PVBR", struct.pack(">I", 0),
+                    bytes(4 * VBR_ENTRIES) + struct.pack(">I", n_samples))
+
+
 def _pwv3(data: bytes) -> bytes:
     extra = struct.pack(">IIHH", 1, len(data), COLS_PER_SEC, 0)
     return _section(b"PWV3", extra, data)
@@ -420,17 +471,24 @@ def _pco2(cues: list[Cue], list_type: int) -> bytes:
     return _section(b"PCO2", extra, body)
 
 
-def build_dat(device_path: str, beats, preview: bytes, hot: list[Cue], mem: list[Cue]) -> bytes:
+def build_dat(device_path: str, beats, preview: bytes, tiny: bytes,
+              n_samples: int, hot: list[Cue], mem: list[Cue]) -> bytes:
     return _pmai(
-        _ppth(device_path) + _pqtz(beats) + _pwav(preview) + _pcob(hot, 1) + _pcob(mem, 0)
+        _ppth(device_path) + _pvbr(n_samples) + _pqtz(beats) + _pwav(preview)
+        + _pwv2(tiny) + _pcob(hot, 1) + _pcob(mem, 0)
     )
 
 
 def build_ext(device_path: str, mono: bytes, colour: bytes,
               hot: list[Cue], mem: list[Cue]) -> bytes:
+    # Section order follows a real export: the cue lists sit between the mono
+    # waveform and the colour one, not after both. Nothing here reads ANLZ
+    # positionally, but a file that is a different shape from rekordbox's is a
+    # worse reference for anyone reading this to learn the format from.
     return _pmai(
-        _ppth(device_path) + _pwv3(mono) + _pwv5(colour)
+        _ppth(device_path) + _pwv3(mono)
         + _pcob([], 1) + _pcob([], 0) + _pco2(hot, 1) + _pco2(mem, 0)
+        + _pwv5(colour)
     )
 
 
@@ -453,14 +511,17 @@ def analyse(src: Path, index: int, meta: dict, root: Path) -> Track:
     entry = music_entry_beat(env, rate, bpm, phase)
     down, margin = estimate_downbeat(
         onset_envelope(spec, 0, 250), rate, bpm, phase, entry)
-    first = phase / rate
+    first = (phase + FRAME_CENTRE_FRAMES) / rate
     print(f"  {src.name}: {duration:6.1f}s  {bpm:6.2f} BPM  "
           f"first beat {first:.3f}s  downbeat +{down} (x{margin:.1f})")
     if margin < 1.3:
         print("    ! the bar position is a close call here; check it by ear")
 
     period = 60.0 / bpm
-    n_beats = int((duration - first) / period)
+    # A beat sits at first + i*period for every i that still lands inside the
+    # track, which is one more than the number of whole periods that fit. The
+    # count was short by exactly one against every rekordbox export compared.
+    n_beats = int((duration - first) / period) + 1
     # The bar is numbered from the detected downbeat, not from whichever beat
     # the track happens to open on -- a three-beat intro is numbered 2, 3, 4
     # and the music lands on 1, which is where the bar lines belong.
@@ -469,9 +530,12 @@ def analyse(src: Path, index: int, meta: dict, root: Path) -> Track:
         for i in range(max(0, n_beats))
     ]
 
-    n_cols = int(duration * COLS_PER_SEC)
+    # Rounding up, not truncating: checked against three rekordbox exports,
+    # ceil matched all three where floor and round each missed two.
+    n_cols = math.ceil(duration * COLS_PER_SEC)
     detail = band_columns(x, n_cols)
     preview = band_columns(x, PREVIEW_COLS)
+    tiny = band_columns(x, TINY_COLS)
 
     # A memory cue on the first downbeat, and hot cues every 32 bars -- the
     # phrase length this kind of material is built in.
@@ -490,7 +554,8 @@ def analyse(src: Path, index: int, meta: dict, root: Path) -> Track:
     out = root / anlz_dir.lstrip("/")
     out.mkdir(parents=True, exist_ok=True)
     (out / "ANLZ0000.DAT").write_bytes(
-        build_dat(audio_rel, beats, preview_bytes(preview), hot, mem)
+        build_dat(audio_rel, beats, preview_bytes(preview), preview_bytes(tiny),
+                  len(x), hot, mem)
     )
     (out / "ANLZ0000.EXT").write_bytes(
         build_ext(audio_rel, detail_mono_bytes(detail), detail_colour_bytes(detail), hot, mem)

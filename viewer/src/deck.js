@@ -281,7 +281,7 @@ export class Deck {
   }
 
   unload() {
-    this.player.stop();
+    this.player.unload();
     if (this.artworkUrl) URL.revokeObjectURL(this.artworkUrl);
     this.artworkUrl = null;
     this.track = null;
