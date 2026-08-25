@@ -73,6 +73,130 @@ function prepare(canvas) {
   return { ctx, w, h };
 }
 
+/**
+ * Offscreen strips for the scrolling waveform, one per destination canvas.
+ *
+ * A WeakMap rather than a field on the canvas so nothing has to be cleaned up:
+ * when a deck is torn down and its canvas is dropped, the strip goes with it.
+ */
+const strips = new WeakMap();
+
+//: How many screenfuls the strip holds. One visible window plus one either
+//: side, so scrolling only re-renders about once per window travelled.
+const STRIP_WINDOWS = 3;
+
+/**
+ * The strip for a canvas, or ``null`` where one cannot be had.
+ *
+ * Returning null rather than throwing keeps the renderer usable without a DOM
+ * -- the tests drive it with a stub canvas in Node -- and :func:`drawDetail`
+ * falls back to painting the bars straight into the target. The null is cached
+ * like any other answer so the attempt is not repeated on every frame.
+ */
+function stripFor(canvas) {
+  const cached = strips.get(canvas);
+  if (cached !== undefined) return cached;
+  let c = null;
+  try {
+    if (typeof document !== 'undefined' && document.createElement) {
+      c = document.createElement('canvas');
+    } else if (typeof OffscreenCanvas === 'function') {
+      c = new OffscreenCanvas(1, 1);
+    }
+  } catch {
+    c = null;
+  }
+  const sctx = c && c.getContext ? c.getContext('2d') : null;
+  const s = sctx
+    ? { canvas: c, ctx: sctx, key: null, cols: null, env: null, startMs: 0, spanMs: 0 }
+    : null;
+  strips.set(canvas, s);
+  return s;
+}
+
+/**
+ * Paint the waveform bars for a span of the track, with x measured from
+ * ``originMs``.
+ *
+ * Split out of :func:`drawDetail` so the same geometry serves both the strip
+ * and, were it ever wanted, a direct draw. Bin boundaries come from the
+ * track's timeline, so the bars land in the same place whichever origin they
+ * are painted against -- which is what lets a strip be reused across frames.
+ */
+function paintBars(ctx, originMs, spanMs, o) {
+  if (o.envelope) {
+    const firstBin = Math.floor(originMs / o.msPerStroke);
+    const lastBin = Math.ceil((originMs + spanMs) / o.msPerStroke);
+    for (let i = firstBin; i <= lastBin; i++) {
+      const t0 = i * o.msPerStroke;
+      if (t0 < 0 || t0 > o.durationMs) continue;
+      const x = (t0 - originMs) / o.msPerPx;
+      const { min: lo, max: hi } = peakBetween(o.envelope, t0, t0 + o.msPerStroke);
+      const bin = binAt(o.cols, t0 * o.colsPerMs, o.step);
+      drawNested(ctx, x, o.strokeW, o.mid, o.amp, lo, hi, bin, o.colour);
+    }
+    return;
+  }
+  const fromCol = Math.floor(originMs * o.colsPerMs) - o.step;
+  const toCol = Math.ceil((originMs + spanMs) * o.colsPerMs) + o.step;
+  for (const bin of binColumns(o.cols, fromCol, Math.min(toCol, o.cols.length), o.step)) {
+    if (bin.index < 0) continue;
+    const x = (bin.index / o.colsPerMs - originMs) / o.msPerPx;
+    drawBands(ctx, x, o.strokeW, o.mid, o.amp, bin, o.colour);
+  }
+}
+
+/**
+ * Paint the bars by way of the cached strip, or report that it could not be
+ * done so the caller paints them directly.
+ *
+ * Fails soft on purpose: there is no DOM to make a canvas in under the tests,
+ * and a stub context has no ``drawImage``. Both are answered by drawing the
+ * bars the ordinary way rather than by throwing.
+ */
+function blitBars(ctx, canvas, startMs, bars) {
+  const strip = stripFor(canvas);
+  if (!strip || typeof ctx.drawImage !== 'function') return false;
+  const { w, h, dpr, windowMs, msPerPx, msPerStroke } = bars;
+
+  // Identity comparisons on cols and envelope catch a new track without
+  // anything having to announce one; the rest catch resize, zoom and skin. The
+  // range test is what makes this worth doing -- with a window of slack either
+  // side, scrolling only repaints about once per window travelled.
+  const key = [w, h, dpr, windowMs, bars.durationMs, bars.colour, bars.step].join('|');
+  const stale = strip.key !== key
+    || strip.cols !== bars.cols
+    || strip.env !== bars.envelope
+    || startMs < strip.startMs
+    || startMs + windowMs > strip.startMs + strip.spanMs;
+
+  if (stale) {
+    const spanMs = windowMs * STRIP_WINDOWS;
+    // Aligned to a bin boundary, so a bar lands on the same sample of audio
+    // whichever strip it is painted into and repainting cannot shift the shape.
+    const originMs =
+      Math.floor((startMs - (spanMs - windowMs) / 2) / msPerStroke) * msPerStroke;
+    const cssW = Math.ceil(spanMs / msPerPx);
+    strip.canvas.width = Math.round(cssW * dpr);
+    strip.canvas.height = Math.round(h * dpr);
+    strip.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    strip.ctx.clearRect(0, 0, cssW, h);
+    paintBars(strip.ctx, originMs, spanMs, bars);
+    Object.assign(strip, { key, cols: bars.cols, env: bars.envelope,
+                           startMs: originMs, spanMs });
+  }
+
+  // The transform is reset first so the offset is in real device pixels and
+  // the copy is one-to-one, rather than a dpr-scaled -- and so resampled --
+  // draw. Rounding costs at most half a pixel of timing, against a view that
+  // travels about three device pixels a frame.
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(strip.canvas, Math.round(((strip.startMs - startMs) / msPerPx) * dpr), 0);
+  ctx.restore();
+  return true;
+}
+
 function cueColor(cue) {
   return cue.isMemory ? MEMORY_CUE_COLOR : HOT_CUE_COLOR;
 }
@@ -309,47 +433,20 @@ export function drawDetail(canvas, waveform, cues, beats, durationMs, positionMs
     ctx.fillRect(x1, 0, x2 - x1, h);
   }
 
-  // Bins are anchored to source columns, so the shape stays fixed and only its
-  // screen position moves -- the waveform glides instead of boiling.
-  if (envelope) {
-    // With decoded audio available the shape comes from a real min/max envelope
-    // and the bands are nested inside it, rather than three separate heights.
-    // One outline shared by all three is what gives the waveform its continuous
-    // form instead of a picket fence.
-    //
-    // The bins are cut from the track's timeline, not from the screen's. This
-    // loop used to walk pixel positions and derive a time from each, which
-    // sounds equivalent and is not: `startMs` moves every frame, so the bin
-    // boundaries slid through the audio and every feature was re-cut on a
-    // different grid each time it was drawn. Measured across the sample track,
-    // one feature's drawn height swung 30% on average and 63% at the ninetieth
-    // percentile as the view scrolled past it, purely from where the boundaries
-    // happened to land. Walking bin indices pins each bin to one span of audio
-    // for the life of the track, so a feature keeps its shape and only moves.
-    const msPerStroke = (windowMs / w) * (barW || 1);
-    const firstBin = Math.floor(startMs / msPerStroke);
-    const lastBin = Math.ceil((startMs + windowMs) / msPerStroke);
-    for (let i = firstBin; i <= lastBin; i++) {
-      const t0 = i * msPerStroke;
-      if (t0 < 0 || t0 > durationMs) continue;
-      // Fractional, and deliberately not snapped to the device pixel grid the
-      // way the beat ticks above are. Snapping here would quantise the bars to
-      // alternating 3- and 4-pixel widths, which is the same shimmer moved from
-      // the heights into the widths. A fixed shape at a fractional position is
-      // what actually glides.
-      const x = ((t0 - startMs) / windowMs) * w;
-      const { min: lo, max: hi } = peakBetween(envelope, t0, t0 + msPerStroke);
-      const bin = binAt(cols, t0 * colsPerMs, step);
-      drawNested(ctx, x, strokeW, mid, amp, lo, hi, bin, colour);
-    }
-  } else {
-    for (const bin of binColumns(cols, fromCol, Math.min(toCol, cols.length), step)) {
-      if (bin.index < 0) continue;
-      const x = (bin.index / colsPerMs - startMs) / windowMs * w;
-      if (x < -barW || x > w) continue;
-      drawBands(ctx, x, strokeW, mid, amp, bin, colour);
-    }
-  }
+  // The bars are rendered once into an offscreen strip and then blitted, which
+  // is what finally settles the edges. Anchoring the bins stopped the shape
+  // changing, but each bar was still rasterised afresh every frame at a new
+  // fractional x, so a 2.5px stroke spread across three or four columns with
+  // coverage that shifted frame to frame -- a fixed shape with a shimmering
+  // edge. Rasterising once and copying at a whole-pixel offset cannot resample,
+  // so the edge is as fixed as the shape.
+  const bars = {
+    cols, colsPerMs, step, strokeW, mid, amp, colour, envelope, durationMs,
+    w, h, dpr, windowMs,
+    msPerStroke: (windowMs / w) * (barW || 1),
+    msPerPx: windowMs / w,
+  };
+  if (!blitBars(ctx, canvas, startMs, bars)) paintBars(ctx, startMs, windowMs, bars);
 
   for (const c of cues) {
     const x = snapX(msToX(c.timeMs));
