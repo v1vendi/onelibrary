@@ -521,3 +521,182 @@ export function drawSpectrum(canvas, spectrum, peaks, colors) {
     }
   }
 }
+
+
+/**
+ * The cassette deck: the other visualiser.
+ *
+ * A spectrum analyser answers "what does this sound like right now"; a
+ * cassette answers "how far in am I", which is the question a DJ actually has
+ * in the corner of their eye. It reads at a glance from across a room, where
+ * nineteen 4px bars do not.
+ *
+ * The reels are modelled rather than animated. Tape of thickness `th` winds
+ * onto the takeup hub one layer at a time, so after `n` turns the pack has
+ * radius `hub + n·th` and has swallowed a spiral of length `π·n·(2·hub + n·th)`.
+ * Inverting that gives the turn count as a closed form in the fraction of the
+ * track played, which is worth the algebra twice over:
+ *
+ *   - the angle is a pure function of position, so scrubbing, seeking and hot
+ *     cues spin the reels to exactly where they belong instead of unwinding
+ *     from wherever an integrated angle had drifted to, and
+ *   - the reel *slows as it fattens*, which is the whole visual tell of a tape
+ *     running out. A constant spin is a spinning circle, not a cassette.
+ *
+ * The supply reel is the same tape seen from the other end: area conservation
+ * puts it at `sqrt(full² + hub² − takeup²)`, full at the start and bare at the
+ * end.
+ *
+ * Turn *count* is the one number not taken from life. Real geometry — a 25 mm
+ * pack over an 11 mm hub at 0.018 mm tape — is some 780 turns a side, which
+ * across a five-minute track is nearly three revolutions a second: at this size
+ * a grey blur. Turns are scaled to about half a revolution a second instead,
+ * keeping the 2.7:1 slowdown from bare hub to full pack intact.
+ */
+const CASS = {
+  w: 100, h: 64,              // design space; scaled to whatever the canvas is
+  hub: 5.2, full: 14,         // reel radii, hub bare to pack full
+  cx: [32, 68], cy: 33,       // reel centres
+  turnsPerSec: 0.5,           // mean revolutions a second, see above
+};
+
+/**
+ * Reel radii and angles at a fraction `p` of a track `durationSec` long.
+ *
+ * Exported because it is the part with an answer that can be checked: at p=0
+ * the supply reel is full and the takeup bare, at p=1 they have swapped, and
+ * the takeup's angular speed falls monotonically in between.
+ */
+export function reelState(p, durationSec) {
+  const { hub, full, turnsPerSec } = CASS;
+  p = Math.min(1, Math.max(0, p || 0));
+  const turns = Math.max(4, (durationSec || 300) * turnsPerSec);
+  const th = (full - hub) / turns;                    // one layer of tape
+  const length = Math.PI * turns * (hub + full);      // the whole spiral
+  const n = (Math.sqrt(hub * hub + (th * p * length) / Math.PI) - hub) / th;
+  const takeup = hub + n * th;
+  const supply = Math.sqrt(full * full + hub * hub - takeup * takeup);
+  return {
+    supply, takeup,
+    // Both reels turn the same way, and the tape crosses the head below the
+    // hubs — so a point at the bottom of each reel travels left to right,
+    // which on screen is counter-clockwise.
+    supplyAngle: -2 * Math.PI * ((full - supply) / th),
+    takeupAngle: -2 * Math.PI * n,
+  };
+}
+
+const SPOKES = 6;
+
+/** One reel: the tape pack, the hub, and the teeth that show it turning. */
+function drawReel(ctx, cx, cy, radius, angle, hub) {
+  if (radius > hub + 0.3) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = '#3d2a1d';                        // wound tape, edge-on
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+  }
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.arc(0, 0, hub, 0, Math.PI * 2);
+  ctx.fillStyle = '#cfd4da';
+  ctx.fill();
+  // The teeth that grip the tape. They are what the eye tracks, so they sit on
+  // the hub rather than inside the pack, where the tape would cover them.
+  ctx.fillStyle = '#2b2f36';
+  for (let i = 0; i < SPOKES; i++) {
+    const a = (i / SPOKES) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * hub, Math.sin(a) * hub);
+    ctx.lineTo(Math.cos(a + 0.34) * hub * 0.42, Math.sin(a + 0.34) * hub * 0.42);
+    ctx.lineTo(Math.cos(a - 0.34) * hub * 0.42, Math.sin(a - 0.34) * hub * 0.42);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, hub * 0.3, 0, Math.PI * 2);
+  ctx.fillStyle = '#6b7280';
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * Draw the cassette. `positionMs` and `durationMs` place the tape; `color` is
+ * the track's rekordbox colour if it has one, which tints the label the way a
+ * mixtape's felt-tip does.
+ */
+export function drawCassette(canvas, { positionMs = 0, durationMs = 0, color = null } = {}) {
+  const dpr = globalThis.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 76;
+  const h = canvas.clientHeight || 46;
+  canvas.width = Math.floor(w * dpr);
+  canvas.height = Math.floor(h * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+
+  // One scale for both axes, centred: the shell keeps a cassette's proportions
+  // whichever skin's head height the canvas happens to have.
+  const s = Math.min(w / CASS.w, h / CASS.h);
+  ctx.save();
+  ctx.translate((w - CASS.w * s) / 2, (h - CASS.h * s) / 2);
+  ctx.scale(s, s);
+
+  const shell = (x, y, ww, hh, r, fill) => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + ww, y, x + ww, y + hh, r);
+    ctx.arcTo(x + ww, y + hh, x, y + hh, r);
+    ctx.arcTo(x, y + hh, x, y, r);
+    ctx.arcTo(x, y, x + ww, y, r);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  };
+
+  shell(2, 2, 96, 60, 4, '#23262b');
+  // The label is paper, and the track's colour is the band printed across the
+  // top of it -- flooding the whole label with a rekordbox colour turns a
+  // cassette into a swatch, and the ruled lines stop reading as writing.
+  shell(3, 3, 94, 22, 3, '#d9cfae');
+  if (color) { ctx.fillStyle = color; ctx.fillRect(3, 3, 94, 5); }
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';                  // the writing on it
+  ctx.fillRect(8, 12, 60, 1.4);
+  ctx.fillRect(8, 18, 38, 1.4);
+  shell(14, 27, 72, 26, 3, '#0d0f12');                 // the window
+
+  const p = durationMs > 0 ? positionMs / durationMs : 0;
+  const reels = reelState(p, durationMs / 1000);
+  drawReel(ctx, CASS.cx[0], CASS.cy, reels.supply, reels.supplyAngle, CASS.hub);
+  drawReel(ctx, CASS.cx[1], CASS.cy, reels.takeup, reels.takeupAngle, CASS.hub);
+
+  // The span of tape across the head opening, and the opening itself.
+  ctx.strokeStyle = '#3d2a1d';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(CASS.cx[0] - 1, CASS.cy + reels.supply);
+  ctx.lineTo(24, 50);
+  ctx.lineTo(76, 50);
+  ctx.lineTo(CASS.cx[1] + 1, CASS.cy + reels.takeup);
+  ctx.stroke();
+  ctx.fillStyle = '#15181c';
+  ctx.fillRect(38, 53, 24, 9);
+  ctx.fillStyle = '#0a0c0e';
+  ctx.fillRect(10, 55, 7, 7);
+  ctx.fillRect(83, 55, 7, 7);
+
+  // A highlight along the top edge, so the shell reads as moulded plastic
+  // rather than as a flat rectangle.
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillRect(5, 2.2, 90, 0.8);
+  ctx.restore();
+}

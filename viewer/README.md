@@ -296,6 +296,37 @@ like alone. Bars are grouped logarithmically — an FFT spreads its bins evenly
 across frequency, so a linear grouping gives fifteen bars of inaudible treble
 and one bar holding all the bass.
 
+## Visualisers
+
+Click the small panel beside the artwork and it swaps between two, on both
+decks at once; the choice persists.
+
+The **spectrum analyser** is driven by a real `AnalyserNode` tapped after the
+crossfader, so it shows what is audible rather than what one deck alone would.
+
+The **cassette** answers the other question — how far into the track this is —
+and reads from across a room, where nineteen 4px bars do not. Its reels are
+modelled rather than animated. Tape winds onto the takeup hub a layer at a
+time, so `n` turns make a pack of radius `hub + n·th` holding a spiral
+`π·n·(2·hub + n·th)` long; inverting that gives the angle as a closed form in
+the fraction played. Two things follow, and both matter:
+
+- **The reel slows as its pack fattens**, by the full 2.7:1 the geometry gives
+  between a bare hub and a full one. That deceleration is the whole visual tell
+  of a tape running out — a constant spin is a spinning circle, not a cassette.
+- **Position alone decides the angle**, so a seek, a hot cue or a scrub puts
+  the reels exactly where they belong instead of unwinding from wherever an
+  integrated angle had drifted to. A paused deck simply holds still.
+
+The supply reel is the same tape from the other end, at
+`sqrt(full² + hub² − takeup²)`, so it empties as the other fills.
+
+Turn *count* is the one number not taken from life: real geometry — a 25 mm
+pack over an 11 mm hub at 0.018 mm tape — is some 780 turns a side, which
+across a five-minute track is nearly three revolutions a second and at this
+size a grey blur. Turns are scaled to about half a revolution a second, and the
+track's colour prints as the band across the label.
+
 ## Limitations
 
 - Reads the `.DAT` and `.EXT` files a track references. Drop the **whole

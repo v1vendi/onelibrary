@@ -8,7 +8,7 @@
 import { decrypt, DecryptError, DEFAULT_KEY } from './sqlcipher.js';
 import { SQLiteDatabase } from './sqlite.js';
 import { parseAnlz } from './anlz.js';
-import { drawOverview, drawDetail, drawSpectrum, TRACK_COLORS } from './waveform.js';
+import { drawOverview, drawDetail, drawSpectrum, drawCassette, TRACK_COLORS } from './waveform.js';
 import { fmtPosition, VIS_COLORS } from './player.js';
 import { Deck, PITCH_RANGES } from './deck.js';
 import { Editor, EDITABLE, saveEdits } from './editor.js';
@@ -76,6 +76,13 @@ function scheduleRenderDecks() {
 }
 const editor = new Editor();
 let rafHandle = null;
+/**
+ * Which visualiser the small canvas beside the artwork runs.
+ *
+ * One setting for both decks rather than one each: they sit side by side in
+ * the mixing layout, and a spectrum next to a cassette reads as a bug.
+ */
+let visMode = 'spectrum';
 /** The deck a bare space/arrow keypress drives. */
 let focusedDeck = 'A';
 /** 1 or 2 decks. Two is the mixing layout; one is just a player. */
@@ -485,8 +492,10 @@ function renderDeck(deck, lanes = null) {
   }
 
   const vis = el('canvas', 'vis');
-  vis.title = 'Spectrum';
+  vis.title = visMode === 'cassette' ? 'Cassette — click for the spectrum'
+                                     : 'Spectrum — click for the cassette';
   const visPeaks = [];
+  vis.onclick = () => setVisMode(visMode === 'cassette' ? 'spectrum' : 'cassette');
 
   const ident = el('div', 'ident');
   const f = deck.track ? trackFields(deck.track) : {};
@@ -626,11 +635,18 @@ function renderDeck(deck, lanes = null) {
     bpmRead.textContent = deck.bpm === null ? '--.--' : deck.bpm.toFixed(2);
     pitchRead.textContent = `${deck.pitch >= 0 ? '+' : ''}${deck.pitch.toFixed(1)}%`;
     if (document.activeElement !== fader) fader.value = String(deck.pitch);
-    const analyser = deck.player.analyser;
-    if (analyser) {
-      if (deck.player.playing) analyser.getByteFrequencyData(deck.player.spectrum);
-      else deck.player.spectrum.fill(0);
-      drawSpectrum(vis, deck.player.spectrum, visPeaks, VIS_COLORS);
+    if (visMode === 'cassette') {
+      // Position drives the reels, so a paused deck simply holds still — which
+      // is what a stopped tape does, and needs no separate idle state.
+      drawCassette(vis, { positionMs: deck.player.positionMs,
+                          durationMs: deck.durationMs, color: f.color });
+    } else {
+      const analyser = deck.player.analyser;
+      if (analyser) {
+        if (deck.player.playing) analyser.getByteFrequencyData(deck.player.spectrum);
+        else deck.player.spectrum.fill(0);
+        drawSpectrum(vis, deck.player.spectrum, visPeaks, VIS_COLORS);
+      }
     }
   };
   deck._redraw = redraw;
@@ -1138,6 +1154,23 @@ function initSkin() {
   btn.onclick = () => apply(document.documentElement.dataset.skin === 'classic' ? 'modern' : 'classic');
 }
 
+/**
+ * Swap the visualiser, on both decks, and remember the choice.
+ *
+ * The decks are re-rendered rather than only redrawn because the canvas
+ * carries the tooltip naming the other mode, and that has to swap with it.
+ */
+function setVisMode(mode) {
+  visMode = mode === 'cassette' ? 'cassette' : 'spectrum';
+  try { localStorage.setItem('onelibrary.vis', visMode); } catch { /* private mode */ }
+  renderDecks();
+}
+
+function initVisMode() {
+  try { visMode = localStorage.getItem('onelibrary.vis') === 'cassette' ? 'cassette' : 'spectrum'; }
+  catch { /* ignore */ }
+}
+
 function initDeckCount() {
   let saved = 1;
   try { saved = Number(localStorage.getItem('onelibrary.decks')) || 1; } catch { /* ignore */ }
@@ -1164,6 +1197,7 @@ function initSidebar() {
 
 export function init() {
   initSkin();
+  initVisMode();
   initDeckCount();
   initSidebar();
   const zone = $('#dropzone');

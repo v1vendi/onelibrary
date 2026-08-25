@@ -566,16 +566,17 @@ test('narrowing the range re-clamps the current pitch', () => {
 // none of the other tests touch the renderers, so a missing helper inside
 // drawDetail once threw on every frame while everything still passed.
 
-import { drawDetail, drawOverview } from '../src/waveform.js';
+import { drawDetail, drawOverview, drawCassette, reelState } from '../src/waveform.js';
 
 function stubCanvas(w = 600, h = 120) {
-  const calls = { fillRect: 0, fillText: 0, fill: 0, fills: new Set() };
+  const calls = { fillRect: 0, fillText: 0, fill: 0, arc: 0, fills: new Set() };
   const ctx = {
     set fillStyle(v) { calls.fills.add(v); },
     get fillStyle() { return '#000'; },
     setTransform() {}, clearRect() {}, fillRect() { calls.fillRect++; },
     fillText() { calls.fillText++; }, beginPath() {}, moveTo() {}, lineTo() {},
     closePath() {}, fill() { calls.fill++; }, stroke() {}, save() {}, restore() {},
+    arc() { calls.arc++; }, arcTo() {}, translate() {}, rotate() {}, scale() {},
     set font(v) {}, set textAlign(v) {}, set textBaseline(v) {},
     set strokeStyle(v) {}, set lineWidth(v) {}, set globalAlpha(v) {},
   };
@@ -659,6 +660,66 @@ test('the overview stacks bands from a baseline rather than mirroring', () => {
   }
   // The played half is dimmed; the part still to come stays bright.
   assert.ok(calls.fills.has('rgba(0,0,0,0.58)'), 'played region should be dimmed');
+});
+
+// -- the cassette visualiser ------------------------------------------------
+
+test('the reels swap between the ends of the track', () => {
+  const start = reelState(0, 300), end = reelState(1, 300);
+  assert.ok(start.supply > start.takeup, 'the supply reel starts full');
+  assert.ok(end.takeup > end.supply, 'and the takeup ends full');
+  // The same tape, from both ends: the pair of radii is the same at each end.
+  assert.ok(Math.abs(start.supply - end.takeup) < 1e-6);
+  assert.ok(Math.abs(start.takeup - end.supply) < 1e-6);
+});
+
+test('a reel slows as its pack fattens', () => {
+  // The visual tell of a tape running out. Equal steps of the track late on
+  // must turn the takeup reel less than equal steps early on.
+  const at = (p) => reelState(p, 300).takeupAngle;
+  const early = Math.abs(at(0.1) - at(0));
+  const late = Math.abs(at(1) - at(0.9));
+  assert.ok(early > late * 1.5, `${early} should clearly exceed ${late}`);
+  // And the slowdown is the one the geometry gives: turning rate is inversely
+  // proportional to the radius, so the ends differ by full pack over bare hub.
+  const h = 1e-4;
+  const rate = (p) => Math.abs(at(p + h) - at(p)) / h;
+  const ends = reelState(0, 300);
+  const slowdown = rate(0) / rate(1 - h);
+  assert.ok(Math.abs(slowdown - ends.supply / ends.takeup) < 0.02,
+            `${slowdown} should match ${ends.supply / ends.takeup}`);
+});
+
+test('the reels turn one way only, and never unwind', () => {
+  let prev = 0;
+  for (let p = 0; p <= 1.0001; p += 0.05) {
+    const a = reelState(p, 300).takeupAngle;
+    assert.ok(a <= prev + 1e-9, `angle went backwards at ${p}`);
+    prev = a;
+  }
+});
+
+test('the spin rate holds whatever the track length', () => {
+  // Turns scale with duration, so a two-minute track and a ten-minute one run
+  // the reels at the same speed rather than one being a blur.
+  for (const secs of [120, 600]) {
+    const turns = Math.abs(reelState(1, secs).takeupAngle) / (2 * Math.PI);
+    assert.ok(Math.abs(turns / secs - 0.5) < 0.01, `${turns} turns over ${secs}s`);
+  }
+});
+
+test('drawCassette paints without throwing', () => {
+  const { canvas, calls } = stubCanvas(76, 46);
+  drawCassette(canvas, { positionMs: 90000, durationMs: 300000, color: '#f33' });
+  assert.ok(calls.arc >= 4, `expected reels drawn as arcs, got ${calls.arc}`);
+  assert.ok(calls.fills.has('#f33'), 'the track colour should tint the label');
+  assert.ok(calls.fills.has('#3d2a1d'), 'the tape pack should be drawn');
+});
+
+test('an empty deck still draws a cassette', () => {
+  const { canvas, calls } = stubCanvas(76, 64);
+  assert.doesNotThrow(() => drawCassette(canvas, {}));
+  assert.ok(calls.arc >= 4);
 });
 
 // -- sync as a latch --------------------------------------------------------
