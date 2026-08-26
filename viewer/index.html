@@ -15,6 +15,11 @@
     document.documentElement.dataset.skin = 'classic';   // private mode
   }
 </script>
+<!-- The Winamp chrome: the surfaces the classic skin's controls are drawn
+     with. Kept in its own file because it is a self-contained vocabulary that
+     knows nothing about this page; the build inlines it, so the shipped page
+     is still one file with no external fetch. -->
+<link rel="stylesheet" href="src/winamp.css">
 <style>
 /* ---------------------------------------------------------------------------
    Palette taken from the subject: DJ equipment, and rekordbox's own cue
@@ -308,9 +313,19 @@ button.dbtn.sync { margin-left: auto; }
 button.dbtn.sync.on {
   background: var(--accent); color: var(--on-accent); border-color: var(--accent);
 }
+/* Latched in the classic skin is the pressed plate with the phosphor showing
+   through it, the same as the zoom and pitch-range switches. Declared here
+   rather than with the rest of the chrome because `.dbtn.sync.on` outranks the
+   block below and would otherwise take its background from whichever rule got
+   to set the shorthand. */
 :root[data-skin="classic"] button.dbtn.sync.on {
-  background: #000; color: var(--phosphor);
-  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
+  background-color: #101018;
+  background-image: var(--wa-sunken-image);
+  background-position: var(--wa-sunken-pos-2x);
+  background-size: var(--wa-sunken-size-2x);
+  background-repeat: no-repeat;
+  color: var(--phosphor);
+  border: 0;
 }
 
 .pads {
@@ -439,90 +454,20 @@ input.crossfader:focus-visible { outline: 2px solid var(--accent); outline-offse
   .mixer { order: 3; width: 100%; }
 }
 
-/* --- the fader, Winamp-style ----------------------------------------------
-   Winamp's sliders are a recessed groove with a raised rectangular grabber,
-   not a rounded track and a dot. Both pseudo-element trees have to be styled
-   separately: WebKit and Gecko do not share them, and a selector list
-   containing an unknown pseudo-element is dropped whole. */
-:root[data-skin="classic"] input.fader {
-  -webkit-appearance: none; appearance: none;
-  background: transparent; width: 34px; height: 108px; accent-color: auto;
-}
-:root[data-skin="classic"] input.fader::-webkit-slider-runnable-track {
-  width: 8px;
-  background: #101014;
-  border-style: solid; border-width: 1px;
-  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
-}
-:root[data-skin="classic"] input.fader::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 30px; height: 13px; margin-left: -12px;
-  background: linear-gradient(180deg, #5a5a64 0%, #3d3d46 55%, #2c2c34 100%);
-  border-style: solid; border-width: 1px;
-  border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
-  border-radius: 0;
-}
-:root[data-skin="classic"] input.fader::-moz-range-track {
-  width: 8px;
-  background: #101014;
-  border-style: solid; border-width: 1px;
-  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
-}
-:root[data-skin="classic"] .mixer { border-radius: 0; background: var(--chassis); }
-:root[data-skin="classic"] .knob {
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 30%, #61616c 0%, #3c3c45 60%, #23232a 100%);
-  border-color: var(--bevel-lo);
-  box-shadow: 0 0 0 1px var(--bevel-hi) inset;
-}
-:root[data-skin="classic"] .knob-pointer { background: var(--phosphor); }
-:root[data-skin="classic"] .knob-read { color: var(--phosphor-dim); }
-:root[data-skin="classic"] .ch-id { color: var(--phosphor); }
-
+/* Slider geometry for the classic skin. The surfaces the track and grabber are
+   drawn with live further down, beside the buttons they are shared with; this
+   is only the sizing, and it has to come with appearance:none -- without it a
+   range input keeps its native parts and every ::-webkit-slider-* rule is
+   quietly ignored. */
+:root[data-skin="classic"] input.fader,
 :root[data-skin="classic"] input.volume,
 :root[data-skin="classic"] input.crossfader {
-  -webkit-appearance: none; appearance: none; background: transparent; accent-color: auto;
+  -webkit-appearance: none; appearance: none;
+  background: transparent; accent-color: auto;
 }
+:root[data-skin="classic"] input.fader  { width: 34px; height: 108px; }
 :root[data-skin="classic"] input.volume { width: 32px; height: 94px; }
-:root[data-skin="classic"] input.volume::-webkit-slider-runnable-track,
-:root[data-skin="classic"] input.crossfader::-webkit-slider-runnable-track {
-  background: #101014;
-  border-style: solid; border-width: 1px;
-  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
-}
-:root[data-skin="classic"] input.volume::-webkit-slider-runnable-track { width: 8px; }
-:root[data-skin="classic"] input.crossfader::-webkit-slider-runnable-track { height: 8px; }
-:root[data-skin="classic"] input.volume::-webkit-slider-thumb,
-:root[data-skin="classic"] input.crossfader::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none; border-radius: 0;
-  background: linear-gradient(180deg, #5a5a64 0%, #3d3d46 55%, #2c2c34 100%);
-  border-style: solid; border-width: 1px;
-  border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
-}
-:root[data-skin="classic"] input.volume::-webkit-slider-thumb {
-  width: 28px; height: 13px; margin-left: -11px;
-}
-:root[data-skin="classic"] input.crossfader::-webkit-slider-thumb {
-  width: 13px; height: 26px; margin-top: -10px;
-}
-:root[data-skin="classic"] input.volume::-moz-range-track { width: 8px; background: #101014; }
-:root[data-skin="classic"] input.crossfader::-moz-range-track { height: 8px; background: #101014; }
-:root[data-skin="classic"] input.volume::-moz-range-thumb {
-  width: 28px; height: 13px; border-radius: 0;
-  background: #45454f; border: 1px solid var(--bevel-lo);
-}
-:root[data-skin="classic"] input.crossfader::-moz-range-thumb {
-  width: 13px; height: 26px; border-radius: 0;
-  background: #45454f; border: 1px solid var(--bevel-lo);
-}
 
-:root[data-skin="classic"] input.fader::-moz-range-thumb {
-  width: 30px; height: 13px;
-  background: linear-gradient(180deg, #5a5a64 0%, #3d3d46 55%, #2c2c34 100%);
-  border-style: solid; border-width: 1px;
-  border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
-  border-radius: 0;
-}
 .ranges { display: flex; gap: 2px; }
 button.rbtn {
   font: inherit; font-size: var(--fs-micro); padding: 3px 5px; cursor: pointer;
@@ -571,14 +516,7 @@ button.pad.set:hover { background: var(--hot); color: var(--on-accent); }
 }
 :root[data-skin="classic"] .clocks .clock { color: var(--phosphor); }
 :root[data-skin="classic"] .clocks .remain { color: var(--phosphor-dim); }
-:root[data-skin="classic"] button.dbtn,
-:root[data-skin="classic"] button.rbtn,
-:root[data-skin="classic"] button.pad {
-  border-radius: 0; background: var(--chassis); color: var(--ink);
-  border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
-}
 :root[data-skin="classic"] button.pad.set { color: var(--phosphor); }
-:root[data-skin="classic"] button.rbtn.on { background: #000; color: var(--phosphor); }
 :root[data-skin="classic"] .art { border-radius: 0; background: #000; }
 
 /* --- track editor ---------------------------------------------------------- */
@@ -782,50 +720,12 @@ canvas.wave.detail   { height: 168px; border-radius: 9px 9px 0 0; cursor: grab; 
 canvas.wave.detail:active { cursor: grabbing; }
 canvas.wave.overview { height: 46px; border-top: 0; border-radius: 0 0 9px 9px; cursor: pointer; }
 
-/* --- transport ------------------------------------------------------------ */
-
-.transport {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  margin-top: 12px;
-}
-button.tbtn {
-  min-width: 42px; height: 32px; padding: 0 10px;
-  font-size: var(--fs-body); line-height: 1; cursor: pointer;
-  background: var(--sunken); color: var(--ink);
-  border: 1px solid var(--line); border-radius: 7px;
-}
-button.tbtn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-button.tbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-button.tbtn:disabled { opacity: .4; cursor: not-allowed; }
 .clock {
   font-size: var(--fs-lead); font-weight: 600; letter-spacing: .01em;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
   padding-left: 4px;
 }
-.clock-total {
-  font-size: var(--fs-body); color: var(--ink-soft);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.zoom { display: flex; align-items: center; gap: 5px; margin-left: auto; }
-button.zbtn {
-  padding: 4px 9px; font-size: var(--fs-small); cursor: pointer;
-  background: none; color: var(--ink-soft);
-  border: 1px solid var(--line); border-radius: 6px;
-  font-variant-numeric: tabular-nums;
-}
-button.zbtn:hover { color: var(--ink); }
-button.zbtn.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.nowav { font-size: var(--fs-small); color: var(--ink-soft); }
-.legend { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
-.chip {
-  font-size: var(--fs-small); font-weight: 550; padding: 3px 10px; border-radius: 999px;
-  background: var(--sunken); color: var(--ink-soft); border: 1px solid var(--line);
-}
-.chip.hot  { color: var(--hot);    border-color: color-mix(in srgb, var(--hot) 45%, transparent); }
-.chip.mem  { color: var(--memory); border-color: color-mix(in srgb, var(--memory) 45%, transparent); }
-.chip.loop { color: var(--ink); border-color: var(--ink-soft); }
 .path {
   margin-top: 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--fs-small); color: var(--ink-soft); word-break: break-all;
@@ -949,8 +849,6 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 :root[data-skin="classic"] #detail,
 :root[data-skin="classic"] #dropzone,
 :root[data-skin="classic"] .pick,
-:root[data-skin="classic"] button.tbtn,
-:root[data-skin="classic"] button.zbtn,
 :root[data-skin="classic"] button.skin,
 :root[data-skin="classic"] #savebar button {
   border-radius: 0;
@@ -960,7 +858,6 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 :root[data-skin="classic"] #content,
 :root[data-skin="classic"] canvas.wave,
 :root[data-skin="classic"] .clock,
-:root[data-skin="classic"]
 :root[data-skin="classic"] input.edit {
   border-radius: 0;
   border-style: solid; border-width: 1px;
@@ -1061,27 +958,6 @@ button.zbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   padding: 1px 10px; font-size: var(--fs-clock); font-weight: 400;
   letter-spacing: .04em; line-height: 1.15;
 }
-:root[data-skin="classic"] .clock-total { color: var(--phosphor-dim); font-size: var(--fs-micro); }
-:root[data-skin="classic"] .transport { gap: 4px; margin-top: 8px; }
-:root[data-skin="classic"] button.tbtn {
-  background: var(--chassis); color: var(--ink);
-  min-width: 26px; height: 24px; padding: 0 5px; font-size: var(--fs-small);
-}
-:root[data-skin="classic"] button.tbtn:active,
-:root[data-skin="classic"] button.zbtn:active {
-  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
-}
-:root[data-skin="classic"] button.zbtn {
-  background: var(--chassis); color: var(--ink); font-size: var(--fs-micro); padding: 3px 6px;
-}
-:root[data-skin="classic"] button.zbtn.on {
-  background: #000; color: var(--phosphor);
-  border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo);
-}
-:root[data-skin="classic"] .chip {
-  border-radius: 0; background: #000; font-size: var(--fs-micro); padding: 2px 6px;
-  border-color: var(--bevel-lo);
-}
 :root[data-skin="classic"] .editor { gap: 3px 8px; grid-template-columns: 70px 1fr; }
 :root[data-skin="classic"] .editor .label { font-size: var(--fs-micro); }
 :root[data-skin="classic"] input.edit {
@@ -1133,52 +1009,80 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
    the original registers a click.
    --------------------------------------------------------------------------- */
 
-:root[data-skin="classic"] button.tbtn,
+/* Every push button in the player is one surface from `src/winamp.css`. The
+   five background properties are the whole of it -- no border, no radius, no
+   box-shadow -- because the bevel, the ramp and the mitres are all layers in
+   that stack. The plate keeps its one-unit highlight and three-unit ramp at
+   whatever size the layout gives it, so a 42px transport key and a 56px pad
+   are the same chrome rather than two approximations of it.
+
+   The unit is doubled here. Winamp drew at 1:1 on a 96dpi screen; on anything
+   denser a one-pixel highlight against a three-pixel ramp is a hairline, and
+   the bevel that carries the whole look stops reading as one. Two scales the
+   edge without touching the face, so the plate keeps its proportions. */
 :root[data-skin="classic"] button.dbtn,
-:root[data-skin="classic"] button.zbtn,
 :root[data-skin="classic"] button.rbtn,
 :root[data-skin="classic"] button.pad,
+:root[data-skin="classic"] button.sidetoggle,
 :root[data-skin="classic"] label.pick,
 :root[data-skin="classic"] button.skin,
 :root[data-skin="classic"] #savebar button {
-  background: var(--btn-face);
-  color: var(--btn-text);
+  background-color: var(--wa-face);
+  background-image: var(--wa-raised-image);
+  background-position: var(--wa-raised-pos-2x);
+  background-size: var(--wa-raised-size-2x);
+  background-repeat: no-repeat;
+  color: var(--wa-ink);
+  border: 0;
   border-radius: 0;
-  border-style: solid;
-  border-width: 1px;
-  border-color: var(--btn-hi) var(--btn-shadow) var(--btn-shadow) var(--btn-hi);
-  box-shadow: inset -1px -1px 0 rgba(74,90,107,.55), inset 1px 1px 0 rgba(255,255,255,.5);
+  box-shadow: none;
   text-shadow: none;
   font-weight: 600;
 }
-:root[data-skin="classic"] button.tbtn:hover:not(:disabled),
+
+/* Winamp has no hover state -- the plate is lit or it is not. Lifting the face
+   half a step is the smallest thing that still answers the pointer without
+   inventing a state the original does not have. */
 :root[data-skin="classic"] button.dbtn:hover:not(:disabled),
+:root[data-skin="classic"] button.rbtn:hover:not(:disabled),
 :root[data-skin="classic"] button.pad:hover:not(:disabled) {
-  background: linear-gradient(180deg, #D2E1E8 0%, #BDC6D4 45%, #8C9BAA 100%);
-  color: var(--btn-text);
-}
-:root[data-skin="classic"] button.tbtn:active:not(:disabled),
-:root[data-skin="classic"] button.dbtn:active:not(:disabled),
-:root[data-skin="classic"] button.zbtn:active,
-:root[data-skin="classic"] button.rbtn:active,
-:root[data-skin="classic"] button.pad:active:not(:disabled) {
-  border-color: var(--btn-shadow) var(--btn-hi) var(--btn-hi) var(--btn-shadow);
-  box-shadow: inset 1px 1px 0 rgba(74,90,107,.6);
-}
-:root[data-skin="classic"] button.tbtn:disabled,
-:root[data-skin="classic"] button.dbtn:disabled,
-:root[data-skin="classic"] button.pad:disabled {
-  background: linear-gradient(180deg, #8E97A4 0%, #7A8390 100%);
-  color: #4A5A6B; opacity: 1;
+  background-color: #cbdae1;
+  color: var(--wa-ink);
 }
 
-/* A selected state is the pressed bevel plus the phosphor, not a colour wash. */
-:root[data-skin="classic"] button.zbtn.on,
+/* Pressed is the same plate rotated a half turn. Winamp also shifts the glyph
+   a pixel down-right, which an icon can do freely; a text label cannot, because
+   every way of nudging it -- padding, indent, transform -- either resizes the
+   button or drags the frame along with it. The inverted bevel carries the
+   press on its own. */
+:root[data-skin="classic"] button.dbtn:active:not(:disabled),
+:root[data-skin="classic"] button.rbtn:active:not(:disabled),
+:root[data-skin="classic"] button.pad:active:not(:disabled),
+:root[data-skin="classic"] button.sidetoggle:active,
+:root[data-skin="classic"] #savebar button:active {
+  background-color: var(--wa-sh1);
+  background-position: var(--wa-sunken-pos-2x);
+}
+
+/* A dead key is a plate with the light taken off it: the ramp collapses to one
+   flat step, which is what an unlit Winamp button looks like. */
+:root[data-skin="classic"] button.dbtn:disabled,
+:root[data-skin="classic"] button.pad:disabled {
+  background-color: #8e97a4;
+  color: #4a5a6b;
+  opacity: 1;
+}
+
+/* A latched control is pressed and lit: the sunken plate, with the phosphor
+   showing through it rather than a colour wash over it. */
 :root[data-skin="classic"] button.rbtn.on {
-  background: #101018;
+  background-color: #101018;
+  background-image: var(--wa-sunken-image);
+  background-position: var(--wa-sunken-pos-2x);
+  background-size: var(--wa-sunken-size-2x);
+  background-repeat: no-repeat;
   color: var(--phosphor);
-  border-color: var(--btn-shadow) var(--btn-hi) var(--btn-hi) var(--btn-shadow);
-  box-shadow: none;
+  border: 0;
 }
 
 /* Indicator lamp, as on SHUFFLE and REPEAT: a recessed square that lights. */
@@ -1196,49 +1100,110 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   background: var(--led-on);
   box-shadow: 0 0 4px rgba(0,255,0,.75), inset 0 0 2px rgba(255,255,255,.6);
 }
-:root[data-skin="classic"] button.sync.on {
-  background: var(--btn-face);
-  color: var(--btn-text);
-  border-color: var(--btn-hi) var(--btn-shadow) var(--btn-shadow) var(--btn-hi);
-}
 
-/* Sliders: a lit green channel with a light grooved grip riding it. */
+/* --- sliders --------------------------------------------------------------
+
+   The same two surfaces as the buttons: the track is a sunken plate, the
+   grabber a raised one, so a fader is made of the parts a button is made of
+   rather than a separate set of gradients that only nearly agree with them.
+
+   Winamp's own sliders sit in a lit channel, which is what --slider-* was
+   sampled for; that colour is kept as the track's fill, showing through the
+   three-pixel ramp cut around it.
+
+   Each engine's pseudo-elements must be styled in their own rules. A selector
+   list containing an unknown pseudo-element is dropped whole, so one list
+   naming both -webkit- and -moz- parts styles neither. */
 :root[data-skin="classic"] input.fader::-webkit-slider-runnable-track,
 :root[data-skin="classic"] input.volume::-webkit-slider-runnable-track {
-  width: 9px;
-  background: linear-gradient(90deg, var(--slider-lo) 0%, var(--slider-hi) 45%, var(--slider-mid) 100%);
-  border-color: var(--shadow) var(--bevel-hi) var(--bevel-hi) var(--shadow);
+  width: 11px;
+  background-color: var(--slider-mid);
+  background-image: var(--wa-sunken-image);
+  background-position: var(--wa-sunken-pos);
+  background-size: var(--wa-sunken-size);
+  background-repeat: no-repeat;
+  border: 0;
+  border-radius: 0;
 }
 :root[data-skin="classic"] input.crossfader::-webkit-slider-runnable-track {
-  height: 9px;
-  background: linear-gradient(180deg, var(--slider-lo) 0%, var(--slider-hi) 45%, var(--slider-mid) 100%);
-  border-color: var(--shadow) var(--bevel-hi) var(--bevel-hi) var(--shadow);
+  height: 11px;
+  background-color: var(--slider-mid);
+  background-image: var(--wa-sunken-image);
+  background-position: var(--wa-sunken-pos);
+  background-size: var(--wa-sunken-size);
+  background-repeat: no-repeat;
+  border: 0;
+  border-radius: 0;
 }
+/* The grabber is a plate, so it is the button's own surface, at the proportions
+   of Winamp's volume grip. The vertical faders are turned by writing-mode, and
+   the thumb turns with them, so its width is the long side in both cases. */
 :root[data-skin="classic"] input.fader::-webkit-slider-thumb,
 :root[data-skin="classic"] input.volume::-webkit-slider-thumb,
 :root[data-skin="classic"] input.crossfader::-webkit-slider-thumb {
-  background:
-    linear-gradient(180deg, transparent 42%, var(--knob-edge) 42%, var(--knob-edge) 47%,
-                    transparent 47%, transparent 53%, var(--knob-edge) 53%,
-                    var(--knob-edge) 58%, transparent 58%),
-    linear-gradient(180deg, var(--knob-hi) 0%, var(--knob-face) 55%, var(--knob-edge) 100%);
-  border-color: var(--btn-hi) var(--btn-shadow) var(--btn-shadow) var(--btn-hi);
+  -webkit-appearance: none; appearance: none;
+  background-color: var(--wa-face);
+  background-image: var(--wa-raised-image);
+  background-position: var(--wa-raised-pos);
+  background-size: var(--wa-raised-size);
+  background-repeat: no-repeat;
+  border: 0;
+  border-radius: 0;
 }
+/* A grabber crosses its track, so its long side is perpendicular to the travel
+   -- wide on the vertical faders, tall on the horizontal crossfader. Sizing all
+   three alike lays the crossfader's grip along its own travel instead, which
+   reads as the wrong control entirely.
+
+   Centring it is likewise a margin on the axis it does *not* move along:
+   margin-left for the vertical pair, margin-top for the horizontal one. Using
+   margin-left on the crossfader would slide the grip away from the value it is
+   reporting. */
+:root[data-skin="classic"] input.fader::-webkit-slider-thumb,
+:root[data-skin="classic"] input.volume::-webkit-slider-thumb {
+  width: 25px; height: 11px;
+  margin-left: -7px;   /* (11px track - 25px grip) / 2 */
+}
+:root[data-skin="classic"] input.crossfader::-webkit-slider-thumb {
+  width: 11px; height: 25px;
+  margin-top: -7px;    /* (11px track - 25px grip) / 2 */
+}
+
 :root[data-skin="classic"] input.fader::-moz-range-track,
 :root[data-skin="classic"] input.volume::-moz-range-track {
-  width: 9px;
-  background: linear-gradient(90deg, var(--slider-lo), var(--slider-hi) 45%, var(--slider-mid));
+  width: 11px;
+  background-color: var(--slider-mid);
+  background-image: var(--wa-sunken-image);
+  background-position: var(--wa-sunken-pos);
+  background-size: var(--wa-sunken-size);
+  background-repeat: no-repeat;
+  border: 0;
+  border-radius: 0;
 }
 :root[data-skin="classic"] input.crossfader::-moz-range-track {
-  height: 9px;
-  background: linear-gradient(180deg, var(--slider-lo), var(--slider-hi) 45%, var(--slider-mid));
+  height: 11px;
+  background-color: var(--slider-mid);
+  background-image: var(--wa-sunken-image);
+  background-position: var(--wa-sunken-pos);
+  background-size: var(--wa-sunken-size);
+  background-repeat: no-repeat;
+  border: 0;
+  border-radius: 0;
 }
 :root[data-skin="classic"] input.fader::-moz-range-thumb,
 :root[data-skin="classic"] input.volume::-moz-range-thumb,
 :root[data-skin="classic"] input.crossfader::-moz-range-thumb {
-  background: linear-gradient(180deg, var(--knob-hi), var(--knob-face) 55%, var(--knob-edge));
-  border: 1px solid var(--btn-shadow);
+  background-color: var(--wa-face);
+  background-image: var(--wa-raised-image);
+  background-position: var(--wa-raised-pos);
+  background-size: var(--wa-raised-size);
+  background-repeat: no-repeat;
+  border: 0;
+  border-radius: 0;
 }
+:root[data-skin="classic"] input.fader::-moz-range-thumb,
+:root[data-skin="classic"] input.volume::-moz-range-thumb { width: 25px; height: 11px; }
+:root[data-skin="classic"] input.crossfader::-moz-range-thumb { width: 11px; height: 25px; }
 
 /* EQ dials pick up the same plate finish as the buttons. */
 :root[data-skin="classic"] .knob {
@@ -1249,15 +1214,40 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 :root[data-skin="classic"] .knob-pointer { background: #101018; width: 3px; }
 :root[data-skin="classic"] .knob.killed .knob-pointer { background: #C01818; }
 
-/* Sections get the recessed frame the playlist window has: a dark inner well
-   inside a light outer edge. */
+/* Sections are windows, framed the way Winamp frames its own: the traced
+   GEN.BMP edges from `src/winamp.css`. The frame is padding, so the content
+   clears it on every side without any element needing to know its widths. */
 :root[data-skin="classic"] .deck,
 :root[data-skin="classic"] .mixer,
-:root[data-skin="classic"] #detail {
-  border: 1px solid var(--bevel-hi);
-  outline: 1px solid var(--shadow);
-  outline-offset: -3px;
-  padding: 5px;
+:root[data-skin="classic"] #detail,
+:root[data-skin="classic"] #content {
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  background-color: var(--wa-panel-face);
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(180deg,
+      var(--wa-panel-dark) 0 1px, var(--wa-panel-lit) 1px 2px,
+      var(--wa-panel-face) 2px 12px, var(--wa-panel-dark) 12px 14px,
+      var(--wa-panel-lit) 14px 15px, var(--wa-panel-face) 15px 19px,
+      var(--wa-panel-dark) 19px 20px),
+    linear-gradient(180deg,
+      var(--wa-sill-lit) 0 1px, var(--wa-sill-face) 1px 8px,
+      var(--wa-sill-dark) 8px 10px, var(--wa-sill-lit) 10px 11px,
+      var(--wa-sill-face) 11px 13px, var(--wa-sill-dark) 13px 14px),
+    linear-gradient(90deg,
+      var(--wa-panel-dark) 0 1px, var(--wa-panel-lit) 1px 2px,
+      var(--wa-panel-face) 2px 4px, var(--wa-panel-dark) 4px 6px,
+      var(--wa-panel-lit) 6px 7px, var(--wa-panel-face) 7px 11px),
+    linear-gradient(90deg,
+      var(--wa-panel-lit) 0 1px, var(--wa-panel-face) 1px 4px,
+      var(--wa-panel-lit) 4px 5px, var(--wa-panel-face) 5px 7px,
+      var(--wa-panel-dark) 7px 8px);
+  background-position: left 0 top 0, left 0 bottom 0, left 0 top 0, right 0 top 0;
+  background-size: 100% 20px, 100% 14px, 11px 100%, 8px 100%;
+  padding: 20px 8px 14px 11px;
 }
 :root[data-skin="classic"] canvas.wave,
 :root[data-skin="classic"] canvas.vis,
@@ -1277,11 +1267,7 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   height: 20px; line-height: 20px; padding: 0 6px;
   font-size: var(--fs-small); letter-spacing: .3px;
 }
-:root[data-skin="classic"] #content {
-  border: 1px solid var(--bevel-hi);
-  outline: 1px solid var(--shadow);
-  outline-offset: -3px;
-}
+
 
 /* Throbber: a recessed well with a phosphor block sweeping it, the way the
    original shows work in progress rather than a spinning circle. */

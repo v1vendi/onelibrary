@@ -61,9 +61,27 @@ try {
   process.exit(1);
 }
 
-const html = readFileSync(join(root, 'index.html'), 'utf8').replace(
-  /<script type="module">[\s\S]*?<\/script>/,
-  `<script type="module">\n${script}\n</script>`
+/**
+ * Inline a linked stylesheet, for the same reason the modules are inlined: the
+ * shipped page has to work from file:// and as an Artifact, where a strict CSP
+ * blocks any external fetch. Served unbuilt, the <link> resolves normally, so
+ * development and the build see the same styles.
+ */
+function inlineStyles(html) {
+  return html.replace(
+    /[ \t]*<link rel="stylesheet" href="([^"]+)">\n?/g,
+    (_all, href) => {
+      const css = readFileSync(join(root, href), 'utf8');
+      return `<style>\n/* ${href} */\n${css}</style>\n`;
+    }
+  );
+}
+
+const html = inlineStyles(
+  readFileSync(join(root, 'index.html'), 'utf8').replace(
+    /<script type="module">[\s\S]*?<\/script>/,
+    `<script type="module">\n${script}\n</script>`
+  )
 );
 
 mkdirSync(join(root, 'dist'), { recursive: true });
