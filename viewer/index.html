@@ -466,6 +466,7 @@ input.crossfader:focus-visible { outline: 2px solid var(--accent); outline-offse
   background: transparent; accent-color: auto;
 }
 :root[data-skin="classic"] input.fader  { width: 34px; height: 108px; }
+:root[data-skin="classic"] input.crossfader { height: 24px; }
 :root[data-skin="classic"] input.volume { width: 32px; height: 94px; }
 
 .ranges { display: flex; gap: 2px; }
@@ -1135,20 +1136,23 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 :root[data-skin="classic"] input.crossfader::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
   box-sizing: border-box;
-  width: 11px; height: 11px;
+  width: 22px; height: 22px;
   border: 0; border-radius: 0;
   background-color: var(--wa-grip-face);
   background-repeat: no-repeat;
   background-image: var(--wa-grip-image);
-  background-position: var(--wa-grip-pos);
-  background-size: var(--wa-grip-size);
+  background-position: var(--wa-grip-pos-2x);
+  background-size: var(--wa-grip-size-2x);
 }
+/* Centring is a margin on the axis the grip does not travel along, and at
+   22px against a 6px groove it lands on a whole pixel: (6 - 22) / 2 = -8.
+   The 11px grip could not -- it wanted -2.5 and sat half a pixel off centre. */
 :root[data-skin="classic"] input.fader::-webkit-slider-thumb,
 :root[data-skin="classic"] input.volume::-webkit-slider-thumb {
-  margin-left: -3px;   /* (6px groove - 11px grip) / 2, rounded to a pixel */
+  margin-left: -8px;
 }
 :root[data-skin="classic"] input.crossfader::-webkit-slider-thumb {
-  margin-top: -3px;
+  margin-top: -8px;
 }
 
 :root[data-skin="classic"] input.fader::-moz-range-track,
@@ -1170,13 +1174,13 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 :root[data-skin="classic"] input.volume::-moz-range-thumb,
 :root[data-skin="classic"] input.crossfader::-moz-range-thumb {
   box-sizing: border-box;
-  width: 11px; height: 11px;
+  width: 22px; height: 22px;
   border: 0; border-radius: 0;
   background-color: var(--wa-grip-face);
   background-repeat: no-repeat;
   background-image: var(--wa-grip-image);
-  background-position: var(--wa-grip-pos);
-  background-size: var(--wa-grip-size);
+  background-position: var(--wa-grip-pos-2x);
+  background-size: var(--wa-grip-size-2x);
 }
 
 /* EQ dials pick up the same plate finish as the buttons. */

@@ -349,6 +349,21 @@
   background-color: var(--wa-panel-face);
   background-repeat: no-repeat;
   background-image:
+    /* left jamb */
+    linear-gradient(90deg,
+      var(--wa-panel-dark) 0 1px,
+      var(--wa-panel-lit)  1px 2px,
+      var(--wa-panel-face) 2px 4px,
+      var(--wa-panel-dark) 4px 6px,
+      var(--wa-panel-lit)  6px 7px,
+      var(--wa-panel-face) 7px 11px),
+    /* right jamb */
+    linear-gradient(90deg,
+      var(--wa-panel-lit)  0 1px,
+      var(--wa-panel-face) 1px 4px,
+      var(--wa-panel-lit)  4px 5px,
+      var(--wa-panel-face) 5px 7px,
+      var(--wa-panel-dark) 7px 8px),
     /* the header band: dark, a lit line, the title field, then a second
        narrower band that starts the content well */
     linear-gradient(180deg,
@@ -366,27 +381,19 @@
       var(--wa-sill-dark)  8px 10px,
       var(--wa-sill-lit)   10px 11px,
       var(--wa-sill-face)  11px 13px,
-      var(--wa-sill-dark)  13px 14px),
-    /* left jamb */
-    linear-gradient(90deg,
-      var(--wa-panel-dark) 0 1px,
-      var(--wa-panel-lit)  1px 2px,
-      var(--wa-panel-face) 2px 4px,
-      var(--wa-panel-dark) 4px 6px,
-      var(--wa-panel-lit)  6px 7px,
-      var(--wa-panel-face) 7px 11px),
-    /* right jamb */
-    linear-gradient(90deg,
-      var(--wa-panel-lit)  0 1px,
-      var(--wa-panel-face) 1px 4px,
-      var(--wa-panel-lit)  4px 5px,
-      var(--wa-panel-face) 5px 7px,
-      var(--wa-panel-dark) 7px 8px);
+      var(--wa-sill-dark)  13px 14px);
+  /* The jambs are listed first, so they paint over the ends of the top band
+     and the sill. Drawn the other way round -- which is how this started --
+     the horizontal bands run across the corners, the vertical frame lines
+     stop dead where they meet them, and at the bottom the sill's lighter
+     palette butts straight into the jamb's darker one. Winamp gives every
+     corner its own sprite; short of those, letting one axis run unbroken is
+     what makes the frame read as continuous. */
   background-position:
-    left 0 top 0, left 0 bottom 0, left 0 top 0, right 0 top 0;
+    left 0 top 0, right 0 top 0, left 0 top 0, left 0 bottom 0;
   background-size:
-    100% var(--wa-panel-top), 100% var(--wa-panel-bottom),
-    var(--wa-panel-left) 100%, var(--wa-panel-right) 100%;
+    var(--wa-panel-left) 100%, var(--wa-panel-right) 100%,
+    100% var(--wa-panel-top), 100% var(--wa-panel-bottom);
   /* Content clears the frame on every side. */
   padding:
     var(--wa-panel-top) var(--wa-panel-right)
@@ -413,7 +420,12 @@
 :root {
   --wa-groove-dark: #13131e;   /* the near edge of the cut          */
   --wa-groove-lit:  #9393a5;   /* the far edge                      */
-  --wa-groove:      #2a9a16;   /* the channel                       */
+  --wa-groove:      #2a9a16;   /* the channel, at rest              */
+  /* The two ends of the ramp, both sampled from the sheet: the channel is
+     green where a control sits neutral and yellow where it is pushed. The
+     colour is set per input, because it reports that input's value. */
+  --wa-groove-rest: #2a9a16;
+  --wa-groove-hot:  #c6b335;
 
   --wa-grip-face:   #adbdc6;   /* the grabber, light to dark        */
   --wa-grip-hi:     #dde6e9;
@@ -470,6 +482,25 @@
     8px 1px, 1px 9px,
     8px 1px, 1px 9px,
     1px 1px, 6px 1px, 1px 7px;
+
+  /* The same plate at twice the size. Eleven pixels is what Winamp drew
+     on a 96dpi screen; here it is a grip nobody can catch. */
+  --wa-grip-pos-2x:
+    8px 8px, 8px 12px,
+    4px 0, 4px 20px,
+    0 0, 20px 0, 0 20px, 20px 20px,
+    2px 0, 2px 20px, 0 2px, 20px 2px,
+    2px 2px, 2px 2px,
+    4px 18px, 18px 2px,
+    4px 16px, 6px 16px, 16px 4px;
+  --wa-grip-size-2x:
+    6px 2px, 6px 2px,
+    14px 2px, 10px 2px,
+    2px 2px, 2px 2px, 2px 2px, 2px 2px,
+    18px 2px, 18px 2px, 2px 18px, 2px 18px,
+    16px 2px, 2px 18px,
+    16px 2px, 2px 18px,
+    2px 2px, 12px 2px, 2px 14px;
 
 }
 

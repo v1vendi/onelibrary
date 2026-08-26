@@ -52,6 +52,27 @@ let mixerUnsubscribe = [];
 const pendingRedraws = new Set();
 let redrawFrame = null;
 
+/**
+ * Tint a fader's channel by how far it is pushed.
+ *
+ * Winamp's equalizer does not draw one green line: the channel takes a colour
+ * from the slider's own value, so a panel of faders shows at a glance which
+ * ones are doing something. Both ends of the ramp are sampled from the skin --
+ * green where a control sits neutral, yellow where it is pushed.
+ *
+ * `away` is 0 at rest and 1 at either extreme, so a pitch fader tints in both
+ * directions from centre while a volume fader tints from the bottom up.
+ */
+function tintGroove(input, away) {
+  const mix = (a, b, t) => Math.round(a + (b - a) * t);
+  const REST = [0x2a, 0x9a, 0x16];
+  const HOT = [0xc6, 0xb3, 0x35];
+  const t = Math.max(0, Math.min(1, away));
+  const c = REST.map((v, i) => mix(v, HOT[i], t));
+  input.style.setProperty('--wa-groove',
+    `rgb(${c[0]}, ${c[1]}, ${c[2]})`);
+}
+
 function scheduleRedraw(fn) {
   pendingRedraws.add(fn);
   if (redrawFrame !== null) return;
@@ -609,16 +630,27 @@ function renderDeck(deck, lanes = null) {
   fader.step = '0.02';
   fader.value = String(deck.pitch);
   fader.title = 'Pitch';
-  fader.oninput = () => deck.setPitch(Number(fader.value));
+  const tintFader = () =>
+    tintGroove(fader, Math.abs(Number(fader.value)) / (deck.range || 1));
+  fader.oninput = () => { deck.setPitch(Number(fader.value)); tintFader(); };
+  tintFader();
   fader.ondblclick = () => { deck.resetPitch(); renderDecks(); };
   tempo.append(fader);
 
+  // One key that cycles, rather than one key per range. A player has a single
+  // RANGE button and the four widths are a sequence, not four independent
+  // choices -- and four latched keys spend most of their time showing three
+  // states nobody selected. The label is the current width, so the control
+  // reads as its own value.
   const ranges = el('div', 'ranges');
-  for (const r of PITCH_RANGES) {
-    const b = el('button', 'rbtn' + (deck.range === r ? ' on' : ''), `±${r}`);
-    b.onclick = () => { deck.setRange(r); renderDecks(); };
-    ranges.append(b);
-  }
+  const cycle = el('button', 'rbtn range', `±${deck.range}`);
+  cycle.title = `Pitch range, now ±${deck.range}% — click for the next`;
+  cycle.onclick = () => {
+    const next = PITCH_RANGES[(PITCH_RANGES.indexOf(deck.range) + 1) % PITCH_RANGES.length];
+    deck.setRange(next);
+    renderDecks();
+  };
+  ranges.append(cycle);
   tempo.append(ranges);
 
   // A latch, not a one-shot: while it is on the deck keeps following the other
@@ -935,7 +967,9 @@ function mixerChannel(deck) {
   fader.value = String(deck.player.volume);
   fader.title = `Deck ${deck.id} level`;
   fader.setAttribute('aria-label', `Deck ${deck.id} level`);
-  fader.oninput = () => deck.player.setVolume(Number(fader.value));
+  const tintVolume = () => tintGroove(fader, Number(fader.value));
+  fader.oninput = () => { deck.player.setVolume(Number(fader.value)); tintVolume(); };
+  tintVolume();
   ch.append(fader);
 
   // Follow the player rather than only the pointer, so a controller moving the
@@ -971,11 +1005,16 @@ function renderMixer() {
   xf.value = String(state.crossfade);
   xf.title = 'Crossfader — double-click to centre';
   xf.setAttribute('aria-label', 'Crossfader');
+  const tintCross = () => tintGroove(xf, Math.abs(Number(xf.value) - 0.5) * 2);
   xf.oninput = () => {
     state.crossfade = Number(xf.value);
     applyCrossfade();
+    tintCross();
   };
-  xf.ondblclick = () => { state.crossfade = 0.5; xf.value = '0.5'; applyCrossfade(); };
+  xf.ondblclick = () => {
+    state.crossfade = 0.5; xf.value = '0.5'; applyCrossfade(); tintCross();
+  };
+  tintCross();
   cross.append(xf);
   mixer.append(cross);
 
