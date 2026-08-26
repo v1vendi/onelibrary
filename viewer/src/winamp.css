@@ -392,3 +392,123 @@
     var(--wa-panel-top) var(--wa-panel-right)
     var(--wa-panel-bottom) var(--wa-panel-left);
 }
+
+/* ===========================================================================
+   Sliders
+
+   Traced from the equalizer, which is where Winamp's vertical faders live:
+   the grabber from EQMAIN's 11x11 handle, the track from one band cell of the
+   same sheet.
+
+   The track is not a wide bevelled channel -- it is a six-pixel groove: one
+   dark pixel, four of lit colour, one light pixel, cut into the chassis. The
+   lit colour is #2a9a16, which is already this skin's --slider-lo; the sample
+   was right, the geometry around it was not.
+
+   The grabber is a plate with a black outline and two grip lines, and it is
+   built pixel by pixel because it is only eleven across -- at that size every
+   pixel is a feature, and a gradient approximation reads as a smudge.
+   =========================================================================== */
+
+:root {
+  --wa-groove-dark: #13131e;   /* the near edge of the cut          */
+  --wa-groove-lit:  #9393a5;   /* the far edge                      */
+  --wa-groove:      #2a9a16;   /* the channel                       */
+
+  --wa-grip-face:   #adbdc6;   /* the grabber, light to dark        */
+  --wa-grip-hi:     #dde6e9;
+  --wa-grip-mid:    #8b9ba7;
+  --wa-grip-sh:     #7b8494;
+  --wa-grip-sh2:    #4a5a6b;
+  --wa-grip-edge:   #080810;   /* the outline's ends, and the grips  */
+  --wa-grip-black:  #000000;   /* the outline's run, a shade darker  */
+  --wa-grip-corner: #292942;   /* the four cut corners              */
+  /* Published so a range input's thumb can adopt the same plate: a
+     pseudo-element cannot carry a class, and the alternative is copying
+     nineteen layers into every thumb rule. */
+  --wa-grip-image:
+    linear-gradient(var(--wa-grip-edge),   var(--wa-grip-edge)),    /*  1 grip */
+    linear-gradient(var(--wa-grip-edge),   var(--wa-grip-edge)),    /*  2 grip */
+    linear-gradient(var(--wa-grip-black),  var(--wa-grip-black)),   /*  3 outline */
+    linear-gradient(var(--wa-grip-black),  var(--wa-grip-black)),   /*  4 outline */
+    linear-gradient(var(--wa-grip-corner), var(--wa-grip-corner)),  /*  5 corner */
+    linear-gradient(var(--wa-grip-corner), var(--wa-grip-corner)),  /*  4 corner */
+    linear-gradient(var(--wa-grip-corner), var(--wa-grip-corner)),  /*  5 corner */
+    linear-gradient(var(--wa-grip-corner), var(--wa-grip-corner)),  /*  6 corner */
+    linear-gradient(var(--wa-grip-edge),   var(--wa-grip-edge)),    /*  7 top    */
+    linear-gradient(var(--wa-grip-edge),   var(--wa-grip-edge)),    /*  8 bottom */
+    linear-gradient(var(--wa-grip-edge),   var(--wa-grip-edge)),    /*  9 left   */
+    linear-gradient(var(--wa-grip-edge),   var(--wa-grip-edge)),    /* 10 right  */
+    linear-gradient(var(--wa-grip-hi),     var(--wa-grip-hi)),      /* 11 lit    */
+    linear-gradient(var(--wa-grip-hi),     var(--wa-grip-hi)),      /* 12 lit    */
+    linear-gradient(var(--wa-grip-sh2),    var(--wa-grip-sh2)),     /* 13 shade  */
+    linear-gradient(var(--wa-grip-sh2),    var(--wa-grip-sh2)),     /* 14 shade  */
+    linear-gradient(var(--wa-grip-mid),    var(--wa-grip-mid)),     /* 15 blend  */
+    linear-gradient(var(--wa-grip-sh),     var(--wa-grip-sh)),      /* 16 shade  */
+    linear-gradient(var(--wa-grip-sh),     var(--wa-grip-sh));      /* 17 shade  */
+  background-position:
+    4px 4px, 4px 6px,
+    2px 0, 2px 10px,
+    0 0, 10px 0, 0 10px, 10px 10px,
+    1px 0, 1px 10px, 0 1px, 10px 1px,
+    1px 1px, 1px 1px,
+    2px 9px, 9px 1px,
+    2px 8px, 3px 8px, 8px 2px;
+  --wa-grip-pos:
+    4px 4px, 4px 6px,
+    2px 0, 2px 10px,
+    0 0, 10px 0, 0 10px, 10px 10px,
+    1px 0, 1px 10px, 0 1px, 10px 1px,
+    1px 1px, 1px 1px,
+    2px 9px, 9px 1px,
+    2px 8px, 3px 8px, 8px 2px;
+  --wa-grip-size:
+    3px 1px, 3px 1px,
+    7px 1px, 5px 1px,
+    1px 1px, 1px 1px, 1px 1px, 1px 1px,
+    9px 1px, 9px 1px, 1px 9px, 1px 9px,
+    8px 1px, 1px 9px,
+    8px 1px, 1px 9px,
+    1px 1px, 6px 1px, 1px 7px;
+
+}
+
+/* The groove, six pixels across, drawn along whichever axis it travels. */
+.wa-groove-v,
+.wa-groove-h {
+  border: 0;
+  border-radius: 0;
+  background-repeat: no-repeat;
+  background-color: transparent;
+}
+.wa-groove-v {
+  background-image: linear-gradient(90deg,
+    var(--wa-groove-dark) 0 1px,
+    var(--wa-groove)      1px 5px,
+    var(--wa-groove-lit)  5px 6px);
+  background-size: 6px 100%;
+  background-position: center top;
+}
+.wa-groove-h {
+  background-image: linear-gradient(180deg,
+    var(--wa-groove-dark) 0 1px,
+    var(--wa-groove)      1px 5px,
+    var(--wa-groove-lit)  5px 6px);
+  background-size: 100% 6px;
+  background-position: left center;
+}
+
+/* The grabber. Eleven layers over a face, first on top -- the two grip lines,
+   then each edge of the plate, then the outline and its cut corners. */
+.wa-grip {
+  box-sizing: border-box;
+  width: 11px;
+  height: 11px;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--wa-grip-face);
+  background-repeat: no-repeat;
+  background-image: var(--wa-grip-image);
+  background-position: var(--wa-grip-pos);
+  background-size: var(--wa-grip-size);
+}

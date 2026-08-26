@@ -1103,107 +1103,81 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 
 /* --- sliders --------------------------------------------------------------
 
-   The same two surfaces as the buttons: the track is a sunken plate, the
-   grabber a raised one, so a fader is made of the parts a button is made of
-   rather than a separate set of gradients that only nearly agree with them.
+   Traced from the equalizer -- see `src/winamp.css`. The track is a six-pixel
+   groove rather than a wide bevelled channel, and the grabber is the EQ's
+   11x11 plate, so a fader here is the control Winamp actually draws instead of
+   a bevel borrowed from the buttons.
 
-   Winamp's own sliders sit in a lit channel, which is what --slider-* was
-   sampled for; that colour is kept as the track's fill, showing through the
-   three-pixel ramp cut around it.
-
-   Each engine's pseudo-elements must be styled in their own rules. A selector
-   list containing an unknown pseudo-element is dropped whole, so one list
-   naming both -webkit- and -moz- parts styles neither. */
+   Each engine's pseudo-elements need their own rules: a selector list holding
+   an unknown pseudo-element is dropped whole, so one list naming both the
+   -webkit- and -moz- parts styles neither. */
 :root[data-skin="classic"] input.fader::-webkit-slider-runnable-track,
 :root[data-skin="classic"] input.volume::-webkit-slider-runnable-track {
-  width: 11px;
-  background-color: var(--slider-mid);
-  background-image: var(--wa-sunken-image);
-  background-position: var(--wa-sunken-pos);
-  background-size: var(--wa-sunken-size);
-  background-repeat: no-repeat;
-  border: 0;
-  border-radius: 0;
+  width: 6px;
+  border: 0; border-radius: 0;
+  background: linear-gradient(90deg,
+    var(--wa-groove-dark) 0 1px, var(--wa-groove) 1px 5px,
+    var(--wa-groove-lit) 5px 6px) no-repeat;
 }
 :root[data-skin="classic"] input.crossfader::-webkit-slider-runnable-track {
-  height: 11px;
-  background-color: var(--slider-mid);
-  background-image: var(--wa-sunken-image);
-  background-position: var(--wa-sunken-pos);
-  background-size: var(--wa-sunken-size);
-  background-repeat: no-repeat;
-  border: 0;
-  border-radius: 0;
+  height: 6px;
+  border: 0; border-radius: 0;
+  background: linear-gradient(180deg,
+    var(--wa-groove-dark) 0 1px, var(--wa-groove) 1px 5px,
+    var(--wa-groove-lit) 5px 6px) no-repeat;
 }
-/* The grabber is a plate, so it is the button's own surface, at the proportions
-   of Winamp's volume grip. The vertical faders are turned by writing-mode, and
-   the thumb turns with them, so its width is the long side in both cases. */
+
+/* The grabber is square, so it needs no separate orientation -- only the
+   margin that centres it differs, and that is a margin on the axis it does
+   not travel along. */
 :root[data-skin="classic"] input.fader::-webkit-slider-thumb,
 :root[data-skin="classic"] input.volume::-webkit-slider-thumb,
 :root[data-skin="classic"] input.crossfader::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
-  background-color: var(--wa-face);
-  background-image: var(--wa-raised-image);
-  background-position: var(--wa-raised-pos);
-  background-size: var(--wa-raised-size);
+  box-sizing: border-box;
+  width: 11px; height: 11px;
+  border: 0; border-radius: 0;
+  background-color: var(--wa-grip-face);
   background-repeat: no-repeat;
-  border: 0;
-  border-radius: 0;
+  background-image: var(--wa-grip-image);
+  background-position: var(--wa-grip-pos);
+  background-size: var(--wa-grip-size);
 }
-/* A grabber crosses its track, so its long side is perpendicular to the travel
-   -- wide on the vertical faders, tall on the horizontal crossfader. Sizing all
-   three alike lays the crossfader's grip along its own travel instead, which
-   reads as the wrong control entirely.
-
-   Centring it is likewise a margin on the axis it does *not* move along:
-   margin-left for the vertical pair, margin-top for the horizontal one. Using
-   margin-left on the crossfader would slide the grip away from the value it is
-   reporting. */
 :root[data-skin="classic"] input.fader::-webkit-slider-thumb,
 :root[data-skin="classic"] input.volume::-webkit-slider-thumb {
-  width: 25px; height: 11px;
-  margin-left: -7px;   /* (11px track - 25px grip) / 2 */
+  margin-left: -3px;   /* (6px groove - 11px grip) / 2, rounded to a pixel */
 }
 :root[data-skin="classic"] input.crossfader::-webkit-slider-thumb {
-  width: 11px; height: 25px;
-  margin-top: -7px;    /* (11px track - 25px grip) / 2 */
+  margin-top: -3px;
 }
 
 :root[data-skin="classic"] input.fader::-moz-range-track,
 :root[data-skin="classic"] input.volume::-moz-range-track {
-  width: 11px;
-  background-color: var(--slider-mid);
-  background-image: var(--wa-sunken-image);
-  background-position: var(--wa-sunken-pos);
-  background-size: var(--wa-sunken-size);
-  background-repeat: no-repeat;
-  border: 0;
-  border-radius: 0;
+  width: 6px;
+  border: 0; border-radius: 0;
+  background: linear-gradient(90deg,
+    var(--wa-groove-dark) 0 1px, var(--wa-groove) 1px 5px,
+    var(--wa-groove-lit) 5px 6px) no-repeat;
 }
 :root[data-skin="classic"] input.crossfader::-moz-range-track {
-  height: 11px;
-  background-color: var(--slider-mid);
-  background-image: var(--wa-sunken-image);
-  background-position: var(--wa-sunken-pos);
-  background-size: var(--wa-sunken-size);
-  background-repeat: no-repeat;
-  border: 0;
-  border-radius: 0;
+  height: 6px;
+  border: 0; border-radius: 0;
+  background: linear-gradient(180deg,
+    var(--wa-groove-dark) 0 1px, var(--wa-groove) 1px 5px,
+    var(--wa-groove-lit) 5px 6px) no-repeat;
 }
 :root[data-skin="classic"] input.fader::-moz-range-thumb,
 :root[data-skin="classic"] input.volume::-moz-range-thumb,
 :root[data-skin="classic"] input.crossfader::-moz-range-thumb {
-  background-color: var(--wa-face);
-  background-image: var(--wa-raised-image);
-  background-position: var(--wa-raised-pos);
-  background-size: var(--wa-raised-size);
+  box-sizing: border-box;
+  width: 11px; height: 11px;
+  border: 0; border-radius: 0;
+  background-color: var(--wa-grip-face);
   background-repeat: no-repeat;
-  border: 0;
-  border-radius: 0;
+  background-image: var(--wa-grip-image);
+  background-position: var(--wa-grip-pos);
+  background-size: var(--wa-grip-size);
 }
-:root[data-skin="classic"] input.fader::-moz-range-thumb,
-:root[data-skin="classic"] input.volume::-moz-range-thumb { width: 25px; height: 11px; }
-:root[data-skin="classic"] input.crossfader::-moz-range-thumb { width: 11px; height: 25px; }
 
 /* EQ dials pick up the same plate finish as the buttons. */
 :root[data-skin="classic"] .knob {
