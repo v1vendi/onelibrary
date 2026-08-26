@@ -332,6 +332,10 @@
   --wa-sill-face:  #3e3c60;
   --wa-sill-lit:   #787790;
   --wa-sill-dark:  #2b2a43;
+  /* The jambs are sampled a shade off the top band -- the bitmap is not flat.
+     Kept apart rather than averaged, so the outline is the skin's colours. */
+  --wa-jamb-dark:  #1d1d2d;
+  --wa-jamb-lit:   #6a6a7a;
 
   --wa-panel-top: 20px;   /* the header band, title included */
   --wa-panel-left: 11px;
@@ -349,6 +353,25 @@
   background-color: var(--wa-panel-face);
   background-repeat: no-repeat;
   background-image:
+    /* The outline, drawn first so it is continuous.
+       -------------------------------------------------------------------
+       Read from the outside in, the four sprites agree on an outer dark
+       ring, and top and left carry a lit line inside it while right and
+       bottom do not: the frame is a bevel lit from the top-left. Drawing
+       those two rings as whole rectangles is what makes the corners meet --
+       leave them to the four edge gradients and each one stops where the
+       next begins, which is the break.
+
+       The grooves deeper in cannot turn the corner: the title bar is ten
+       pixels deeper than the side jamb, so their inner dark grooves sit at
+       different depths and there is no honest way to join them without
+       GEN.BMP's four corner sprites, which are the pieces that do it. */
+    linear-gradient(var(--wa-panel-dark), var(--wa-panel-dark)),   /* top    */
+    linear-gradient(var(--wa-sill-dark),  var(--wa-sill-dark)),    /* bottom */
+    linear-gradient(var(--wa-jamb-dark),  var(--wa-jamb-dark)),    /* left   */
+    linear-gradient(var(--wa-jamb-dark),  var(--wa-jamb-dark)),    /* right  */
+    linear-gradient(var(--wa-panel-lit),  var(--wa-panel-lit)),    /* lit top */
+    linear-gradient(var(--wa-jamb-lit),   var(--wa-jamb-lit)),     /* lit left */
     /* left jamb */
     linear-gradient(90deg,
       var(--wa-panel-dark) 0 1px,
@@ -390,8 +413,12 @@
      corner its own sprite; short of those, letting one axis run unbroken is
      what makes the frame read as continuous. */
   background-position:
+    left 0 top 0, left 0 bottom 0, left 0 top 0, right 0 top 0,
+    left 1px top 1px, left 1px top 1px,
     left 0 top 0, right 0 top 0, left 0 top 0, left 0 bottom 0;
   background-size:
+    100% 1px, 100% 1px, 1px 100%, 1px 100%,
+    calc(100% - 2px) 1px, 1px calc(100% - 2px),
     var(--wa-panel-left) 100%, var(--wa-panel-right) 100%,
     100% var(--wa-panel-top), 100% var(--wa-panel-bottom);
   /* Content clears the frame on every side. */
