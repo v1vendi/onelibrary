@@ -34,7 +34,8 @@ onelibrary inspect /Volumes/YOURUSB
 ```
 
 If `OneLibrary: no` but `legacy PDB: yes`, the device was not converted — go
-back to step 3.
+back to step 3. (`inspect` will happily read the legacy library instead, but
+that is not what is being captured here.)
 
 ## The differential sequence
 

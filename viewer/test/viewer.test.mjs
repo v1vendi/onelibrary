@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { decrypt, DecryptError } from '../src/sqlcipher.js';
 import { SQLiteDatabase, parseColumns, rowidAlias } from '../src/sqlite.js';
 import { parseAnlz, parseSections, CUE_TYPE } from '../src/anlz.js';
+import { PdbDatabase, PdbError, looksLikePdb, readString } from '../src/pdb.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(here, 'fixtures', 'sample.db');
@@ -923,4 +924,116 @@ test('unmapped messages are ignored', () => {
   c.onMessage([0x90, 0x77, 127]);
   c.onMessage([0xe0, 0x00, 64]);
   assert.equal(calls.length, 0);
+});
+
+// -- pdb (legacy DeviceSQL) -------------------------------------------------
+
+// The fixture is generated from python/tests/pdb_fixture.py by
+// python/tools/make_pdb_fixture.py, so this reader and the Python one are held
+// to one identical library rather than to two that can drift apart.
+const PDB_FIXTURE = join(here, 'fixtures', 'sample.pdb');
+const openPdb = () => new PdbDatabase(new Uint8Array(readFileSync(PDB_FIXTURE)));
+const byId = (rows, key) => Object.fromEntries(rows.map((r) => [r[key], r]));
+
+test('recognises a DeviceSQL export, and refuses what is not one', () => {
+  assert.ok(looksLikePdb(new Uint8Array(readFileSync(PDB_FIXTURE))));
+  assert.ok(!looksLikePdb(new Uint8Array(readFileSync(FIXTURE))));
+  assert.throws(() => new PdbDatabase(new Uint8Array(readFileSync(FIXTURE))), PdbError);
+});
+
+test('reads tracks across a chain of pages', () => {
+  // Three tracks: two on one page, the third on the page it links to.
+  const tracks = openPdb().select('content');
+  assert.deepEqual(tracks.map((t) => t.content_id).sort(), [1, 2, 3]);
+});
+
+test('skips a deleted row and a non-data page', () => {
+  const db = openPdb();
+  const page = db.page(2);
+  assert.equal(page.numRowOffsets, 3, 'the deleted row keeps its index slot');
+  assert.equal(page.rowOffsets.length, 2, 'but is not offered as a row');
+  assert.equal(db.page(1).isDataPage, false);
+});
+
+test('maps legacy columns onto the ones the viewer reads', () => {
+  const t = byId(openPdb().select('content'), 'content_id')[1];
+  assert.equal(t.title, 'Alpha Track');
+  assert.equal(t.bpmx100, 12800);   // DeviceSQL calls this tempo
+  assert.equal(t.length, 181);      // and this duration
+  assert.equal(t.rating, 5);
+  assert.equal(t.bitrate, 320);
+  assert.equal(t.artist_id_artist, 1);
+  assert.equal(t.album_id, 1);
+  assert.equal(t.color_id, 1);
+  assert.equal(t.commnt, 'opener');
+  assert.ok(t.analysisDataFilePath.endsWith('ANLZ0000.DAT'));
+  assert.equal(t.path, '/Contents/Kevin MacLeod/Electronic Light/cipher.mp3');
+});
+
+test('reads all three string encodings', () => {
+  const tracks = byId(openPdb().select('content'), 'content_id');
+  assert.equal(tracks[1].title, 'Alpha Track');                 // compact ASCII
+  assert.equal(tracks[2].title, 'Beta Track (Café Mix)');       // UTF-16
+  assert.ok(tracks[3].path.endsWith('electrodoodle.mp3'));      // long ASCII
+});
+
+test('reads both the near and the far name offset', () => {
+  // Bit 0x04 of subtype widens the offset from one byte to two.
+  const artists = byId(openPdb().select('artist'), 'artist_id');
+  assert.equal(artists[1].name, 'Kevin MacLeod');
+  assert.equal(artists[2].name, 'Kevin MacLeod & Friends');
+});
+
+test('reads the lookup tables under their OneLibrary names', () => {
+  const db = openPdb();
+  assert.equal(db.select('album')[0].name, 'Electronic Light');
+  assert.equal(db.select('genre')[0].name, 'Electronic');
+  assert.equal(db.select('key')[0].name, '8A');
+  assert.equal(db.select('label')[0].name, 'Incompetech');
+  assert.equal(db.select('color')[0].color_id, 1);
+  assert.equal(db.select('image')[0].path, '/PIONEER/Artwork/00001.jpg');
+});
+
+test('playlists exclude folders, which hold no tracks', () => {
+  const playlists = openPdb().select('playlist');
+  assert.deepEqual(playlists.map((p) => p.name), ['Warm Up']);
+  assert.equal(playlists[0].playlist_id, 2);
+});
+
+test('playlist entries carry the order the tracks were put in', () => {
+  const entries = openPdb().select('playlist_content')
+    .sort((a, b) => a.sequenceNo - b.sequenceNo);
+  assert.deepEqual(entries.map((e) => e.content_id), [1, 3, 2]);
+  assert.ok(entries.every((e) => e.playlist_id === 2));
+});
+
+test('property is synthesised, since DeviceSQL has no such table', () => {
+  const p = openPdb().select('property')[0];
+  assert.equal(p.numberOfContents, 3);
+  assert.ok(p.deviceName);
+});
+
+test('the DeviceSQL rows are available under their own names too', () => {
+  const raw = byId(openPdb().selectRaw('tracks'), 'id')[1];
+  assert.equal(raw.tempo, 12800);
+  assert.equal(raw.duration, 181);
+  assert.equal(raw.play_count, 0);
+  assert.equal(raw.autoload_hot_cues, 'ON');
+});
+
+test('an unknown table raises', () => {
+  assert.throws(() => openPdb().select('nope'), /no table named/);
+  assert.throws(() => openPdb().selectRaw('nope'), /no readable table/);
+});
+
+test('a page outside the file raises', () => {
+  const db = openPdb();
+  assert.throws(() => db.page(db.pageCount), /outside/);
+});
+
+test('reads every string encoding in isolation', () => {
+  const short = (s) => [(s.length + 1) * 2 + 1, ...Buffer.from(s, 'ascii')];
+  const page = new Uint8Array([0, 0, ...short('hi'), 0, 0]);
+  assert.equal(readString(page, 2), 'hi');
+  assert.throws(() => readString(page, 999), /outside the page/);
 });

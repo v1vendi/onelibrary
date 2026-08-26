@@ -7,9 +7,13 @@ successor to rekordbox's legacy DeviceSQL (`export.pdb`) USB exports.
 > **Status: pre-alpha.** The decryption layer works and is verified. The format
 > itself is still being reverse-engineered. Nothing here is stable yet.
 
+The legacy format is **readable** here too, so the same commands work on a
+device that has not been converted.
+
 Part of the [onelibrary](https://github.com/v1vendi/onelibrary) project. The
-format specification lives in [`spec/ONELIBRARY.md`](../spec/ONELIBRARY.md), and
-a browser viewer for the same format lives in [`viewer/`](../viewer).
+format specifications live in [`spec/ONELIBRARY.md`](../spec/ONELIBRARY.md) and
+[`spec/DEVICESQL.md`](../spec/DEVICESQL.md), and a browser viewer for both
+formats lives in [`viewer/`](../viewer).
 
 ## Why
 
@@ -50,6 +54,32 @@ with OneLibraryDB("/Volumes/MYUSB") as db:
         print(table, db.row_count(table))
 ```
 
+### Legacy devices
+
+`inspect`, `schema` and `dump` read a legacy DeviceSQL export as well, and pick
+it automatically on a device that has no OneLibrary database. A converted
+device keeps both — rekordbox leaves the old files for older players — and the
+newer one wins there unless you ask otherwise:
+
+```bash
+onelibrary inspect --legacy /Volumes/MYUSB   # export.pdb, even if converted
+onelibrary dump    --ext    /Volumes/MYUSB   # exportExt.pdb, the My Tag data
+```
+
+```python
+from onelibrary import PdbFile
+
+with PdbFile("/Volumes/MYUSB") as pdb:
+    for track in pdb.rows("tracks"):
+        print(track["id"], track["title"], track["tempo"] / 100)
+```
+
+`PdbFile` offers the same surface as `OneLibraryDB` — `tables`, `columns`,
+`row_count`, `rows`, `schema_sql` — so a reader need not care which format a
+device carries. It is **read-only**: nothing here writes DeviceSQL, and `apply`
+refuses a legacy device rather than pretending otherwise. See
+[`spec/DEVICESQL.md`](../spec/DEVICESQL.md) for why, and for the layout.
+
 ### Applying edits from the viewer
 
 The browser viewer cannot write to a device in place, so it emits a change-set
@@ -61,6 +91,8 @@ onelibrary apply onelibrary-edits.json /Volumes/MYUSB
 
 The change-set records the value the browser saw alongside the new one, so
 `apply` refuses any field the device has changed since — `--force` overrides.
+It also refuses a device that carries only a legacy library, which nothing here
+can write.
 
 ## Encryption
 

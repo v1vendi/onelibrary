@@ -20,12 +20,20 @@ open-licensed tracks with analysis, so it can be tried without one. See
 real and what is synthesised, and
 [`docs/SAMPLE_LIBRARY.md`](../docs/SAMPLE_LIBRARY.md) for how it is produced.
 
+Devices that have **not** been converted open too. rekordbox still writes the
+legacy DeviceSQL library beside the new one, so `export.pdb` is read as well,
+and translated into the same shape — the track list, the decks and the
+waveforms never learn which format was dropped on them. A legacy library is
+read-only here: nothing in this project writes DeviceSQL, so it is shown and
+played but not edited. See [`spec/DEVICESQL.md`](../spec/DEVICESQL.md).
+
 Part of the [onelibrary](https://github.com/v1vendi/onelibrary) project, whose
 Python library and CLI live in [`python/`](../python) and whose format
-specification lives in [`spec/ONELIBRARY.md`](../spec/ONELIBRARY.md).
+specifications live in [`spec/ONELIBRARY.md`](../spec/ONELIBRARY.md) and
+[`spec/DEVICESQL.md`](../spec/DEVICESQL.md).
 
 ```bash
-npm test          # 81 tests; builds first, two of them assert on the bundle
+npm test          # 107 tests; builds first, two of them assert on the bundle
 npm run build     # -> dist/index.html, a single self-contained file
 npm run serve     # then open http://localhost:8777
 ```
@@ -42,6 +50,7 @@ WASM blob and no external fetches:
 | `src/sqlcipher.js` | SQLCipher 4 decryption using only WebCrypto |
 | `src/sqlite.js` | A minimal SQLite reader — b-trees, records, overflow pages |
 | `src/sqlite_write.js` | A SQLite writer — serialises tables and indexes back into a file |
+| `src/pdb.js` | The legacy DeviceSQL reader — pages, row index, the three string encodings |
 | `src/editor.js` | Track edits and saving |
 | `src/anlz.js` | ANLZ cues, beatgrid and waveforms |
 | `src/waveform.js` | Canvas rendering |

@@ -1,4 +1,4 @@
-"""Command line interface for inspecting OneLibrary devices."""
+"""Command line interface for inspecting OneLibrary and legacy devices."""
 
 from __future__ import annotations
 
@@ -14,10 +14,34 @@ from onelibrary.db import (
     open_encrypted,
 )
 from onelibrary.keys import KeyResolutionError, find_rekordbox_binaries, resolve_key
+from onelibrary.pdb import (
+    EXPORT_EXT_PDB_RELPATH,
+    EXPORT_PDB_RELPATH,
+    PdbError,
+    PdbFile,
+)
 
 
-def _open(args) -> OneLibraryDB:
-    return OneLibraryDB(args.device, args.key)
+def _open(args) -> OneLibraryDB | PdbFile:
+    """Open whichever library the device carries.
+
+    OneLibrary wins when a device has both, which is what a converted device
+    looks like -- rekordbox leaves the legacy files in place so that older
+    players can still read it. ``--legacy`` asks for those files instead.
+    """
+    path = Path(args.device)
+    if getattr(args, "ext", False):
+        return PdbFile(path, ext=True)
+    if path.is_dir():
+        if (path / EXPORT_DB_RELPATH).exists() and not getattr(args, "legacy", False):
+            return OneLibraryDB(path, args.key)
+        if (path / EXPORT_PDB_RELPATH).exists():
+            return PdbFile(path)
+        # Neither is there: let the OneLibrary path report the missing file.
+        return OneLibraryDB(path, args.key)
+    if path.suffix.lower() == ".pdb":
+        return PdbFile(path)
+    return OneLibraryDB(path, args.key)
 
 
 def cmd_inspect(args) -> int:
@@ -25,49 +49,58 @@ def cmd_inspect(args) -> int:
     root = Path(args.device)
     if root.is_dir():
         db_path = root / EXPORT_DB_RELPATH
-        legacy = root / "PIONEER" / "rekordbox" / "export.pdb"
+        legacy = root / EXPORT_PDB_RELPATH
+        legacy_ext = root / EXPORT_EXT_PDB_RELPATH
         anlz = root / "PIONEER" / "USBANLZ"
+        found = [legacy.name] + ([legacy_ext.name] if legacy_ext.exists() else [])
         print(f"device:     {root}")
         print(f"OneLibrary: {'yes' if db_path.exists() else 'no'}  ({db_path.name})")
-        print(f"legacy PDB: {'yes' if legacy.exists() else 'no'}  ({legacy.name})")
+        print(f"legacy PDB: {'yes' if legacy.exists() else 'no'}  ({', '.join(found)})")
         if anlz.is_dir():
             n = sum(1 for _ in anlz.rglob("*.DAT"))
             print(f"ANLZ:       {n} .DAT files under PIONEER/USBANLZ")
-        if not db_path.exists():
-            print("\nNo OneLibrary database on this device.", file=sys.stderr)
+        if not db_path.exists() and not legacy.exists():
+            print("\nNo library of either format on this device.", file=sys.stderr)
             return 1
 
-    db = _open(args)
-    tables = db.tables()
-    print(f"\ntables:     {len(tables)}")
+    lib = _open(args)
+    tables = lib.tables()
+    unreadable = set(tables) - set(getattr(lib, "readable_tables", lambda: tables)())
+    print(f"\nreading:    {lib.path.name}")
+    print(f"tables:     {len(tables)}")
     widest = max((len(t) for t in tables), default=0)
     for t in tables:
-        n = db.row_count(t)
+        n = lib.row_count(t)
         if n or args.all:
-            print(f"  {t.ljust(widest)}  {n:>7}")
-    db.close()
+            note = "  (row layout unknown)" if t in unreadable else ""
+            print(f"  {t.ljust(widest)}  {n:>7}{note}")
+    lib.close()
     return 0
 
 
 def cmd_schema(args) -> int:
-    db = _open(args)
-    print(db.schema_sql())
-    db.close()
+    lib = _open(args)
+    print(lib.schema_sql())
+    lib.close()
     return 0
 
 
 def cmd_dump(args) -> int:
-    db = _open(args)
-    tables = [args.table] if args.table else db.tables()
+    lib = _open(args)
+    # A legacy export declares tables whose row layout nobody has worked out.
+    # Naming one is an error; dumping everything simply passes over them.
+    tables = [args.table] if args.table else getattr(
+        lib, "readable_tables", lib.tables
+    )()
     out = {}
     for t in tables:
         rows = []
-        for r in db.rows(t, args.limit):
+        for r in lib.rows(t, args.limit):
             rows.append({k: (v.hex() if isinstance(v, bytes) else v) for k, v in dict(r).items()})
         out[t] = rows
     json.dump(out, sys.stdout, indent=2, default=str)
     print()
-    db.close()
+    lib.close()
     return 0
 
 
@@ -90,6 +123,14 @@ def cmd_apply(args) -> int:
     path = Path(args.device)
     if path.is_dir():
         path = path / EXPORT_DB_RELPATH
+    if not path.exists() and (Path(args.device) / EXPORT_PDB_RELPATH).exists():
+        print(
+            "error: this device carries a legacy DeviceSQL library, which this tool "
+            'reads but cannot write. Convert it in rekordbox first: right-click the '
+            'device and choose "Convert to OneLibrary".',
+            file=sys.stderr,
+        )
+        return 1
     key = resolve_key(args.key, validate_against=path)
     conn = open_encrypted(path, key, read_only=False)
 
@@ -192,6 +233,16 @@ def cmd_key(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="onelibrary", description=__doc__)
     ap.add_argument("--key", help="SQLCipher passphrase override")
+    ap.add_argument(
+        "--legacy",
+        action="store_true",
+        help="read export.pdb even on a device that also has a OneLibrary database",
+    )
+    ap.add_argument(
+        "--ext",
+        action="store_true",
+        help="read the legacy extension database, exportExt.pdb (My Tag data)",
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("inspect", help="summarise a device")
@@ -227,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     try:
         return args.func(args)
-    except (NotEncryptedError, KeyResolutionError, FileNotFoundError) as exc:
+    except (NotEncryptedError, KeyResolutionError, FileNotFoundError, PdbError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

@@ -7,6 +7,7 @@
 
 import { decrypt, DecryptError, DEFAULT_KEY } from './sqlcipher.js';
 import { SQLiteDatabase } from './sqlite.js';
+import { PdbDatabase } from './pdb.js';
 import { parseAnlz } from './anlz.js';
 import { drawOverview, drawDetail, drawSpectrum, drawCassette, TRACK_COLORS } from './waveform.js';
 import { fmtPosition, VIS_COLORS } from './player.js';
@@ -24,6 +25,9 @@ const el = (tag, cls, text) => {
 
 const state = {
   db: null,
+  // 'onelibrary' or 'devicesql'. The legacy format is read-only here: nothing
+  // in this project writes it, so its libraries are shown but not editable.
+  format: 'onelibrary',
   files: new Map(), // device-relative path (lowercase) -> File
   tracks: [],
   lookups: {},
@@ -124,27 +128,33 @@ async function collectFromDrop(dataTransfer) {
   return out;
 }
 
+/**
+ * Whether the loaded library can be edited.
+ *
+ * Nothing in this project writes DeviceSQL: `onelibrary apply` refuses a
+ * legacy device, and a change-set saved against one would have nothing that
+ * could apply it. So a legacy library is shown, played, and left alone.
+ */
+const readOnly = () => state.format === 'devicesql';
+
+/**
+ * Pick the library out of a dropped device.
+ *
+ * A device converted to OneLibrary keeps its legacy files, so that older
+ * players can still read it. Where both are present the newer one wins: it is
+ * the one rekordbox now maintains, and the only one this page can write.
+ */
 function findDatabase(files) {
+  let legacy = null;
   for (const [path, file] of files) {
-    if (path.endsWith('exportlibrary.db')) return { path, file };
+    if (path.endsWith('exportlibrary.db')) return { path, file, format: 'onelibrary' };
+    if (path.endsWith('export.pdb')) legacy = { path, file, format: 'devicesql' };
   }
-  return null;
+  return legacy;
 }
 
-async function load(files) {
-  state.files = files;
-  const found = findDatabase(files);
-  if (!found) {
-    const legacy = [...files.keys()].some((p) => p.endsWith('export.pdb'));
-    status(
-      legacy
-        ? 'This device has a legacy Device Library (export.pdb) but no OneLibrary database. In rekordbox, right-click the device and choose "Convert to OneLibrary".'
-        : 'No exportLibrary.db found. Drop a device folder, or the database file itself.',
-      'error'
-    );
-    return;
-  }
-
+/** Decrypt and open a OneLibrary database, or report why it could not be. */
+async function openOneLibrary(found) {
   status(`Decrypting ${found.path}…`);
   const buffer = new Uint8Array(await found.file.arrayBuffer());
   let plain;
@@ -159,15 +169,45 @@ async function load(files) {
         : `Unexpected failure: ${err.message}`,
       'error'
     );
-    return;
+    return null;
   }
 
   try {
-    state.db = new SQLiteDatabase(plain);
+    return new SQLiteDatabase(plain);
   } catch (err) {
     status(`Decrypted, but the result is not readable: ${err.message}`, 'error');
+    return null;
+  }
+}
+
+/** Open a legacy DeviceSQL export. It is not encrypted; it is just parsed. */
+async function openDeviceSql(found) {
+  status(`Reading ${found.path}…`);
+  try {
+    return new PdbDatabase(new Uint8Array(await found.file.arrayBuffer()));
+  } catch (err) {
+    status(`${found.path} could not be read: ${err.message}`, 'error');
+    return null;
+  }
+}
+
+async function load(files) {
+  state.files = files;
+  const found = findDatabase(files);
+  if (!found) {
+    status(
+      'No library found. Drop a device folder, or an exportLibrary.db or export.pdb file.',
+      'error'
+    );
     return;
   }
+
+  const db = found.format === 'devicesql'
+    ? await openDeviceSql(found)
+    : await openOneLibrary(found);
+  if (!db) return;
+  state.db = db;
+  state.format = found.format;
 
   // Empty the decks, now that the new database is known to be readable and the
   // old one is definitely being replaced. A loaded deck holds the previous
@@ -182,13 +222,19 @@ async function load(files) {
     deck.unload();
   }
 
+  // Edits are keyed by track id and can only be saved back to a OneLibrary
+  // database. Carrying them into a library that cannot receive them would
+  // leave the save bar offering to write them somewhere they do not belong.
+  if (readOnly()) editor.clear();
+
   buildModel();
   render();
   const anlzCount = [...files.keys()].filter((p) => p.includes('anlz')).length;
+  const legacy = readOnly() ? ' Legacy DeviceSQL library — read-only.' : '';
   status(
     anlzCount
-      ? `Loaded ${state.tracks.length} tracks, ${anlzCount} analysis files.`
-      : `Loaded ${state.tracks.length} tracks. No ANLZ files found — drop the whole device folder to see waveforms and cues.`,
+      ? `Loaded ${state.tracks.length} tracks, ${anlzCount} analysis files.${legacy}`
+      : `Loaded ${state.tracks.length} tracks. No ANLZ files found — drop the whole device folder to see waveforms and cues.${legacy}`,
     'ok'
   );
   setTimeout(() => status(''), 6000);
@@ -242,8 +288,11 @@ function renderSidebar() {
   const prop = state.property;
   const head = el('div', 'device');
   head.append(el('div', 'device-name', prop.deviceName || 'OneLibrary device'));
+  // A legacy export records no database version -- it has no property table at
+  // all -- so it is named by its format instead of by a version it never had.
+  const version = readOnly() ? 'DeviceSQL' : `db v${prop.dbVersion ?? '?'}`;
   head.append(
-    el('div', 'device-meta', `${prop.numberOfContents ?? state.tracks.length} tracks · db v${prop.dbVersion ?? '?'}`)
+    el('div', 'device-meta', `${prop.numberOfContents ?? state.tracks.length} tracks · ${version}`)
   );
   if (prop.createdDate) head.append(el('div', 'device-meta', `exported ${prop.createdDate}`));
   side.append(head);
@@ -966,6 +1015,14 @@ function visibleWindowMs(deck) {
 /** The editable metadata form for one track. */
 function buildEditor(track, fields) {
   const wrap = el('div', 'editor');
+  if (readOnly()) {
+    wrap.append(
+      el('div', 'device-meta readonly',
+         'Legacy DeviceSQL library — read-only. Convert the device to OneLibrary '
+         + 'in rekordbox to edit its tags here.')
+    );
+    return wrap;
+  }
   const id = track.content_id;
   const originalOf = (spec) =>
     spec.kind === 'lookup' ? fields[spec.field] || '' : track[spec.field] ?? null;
@@ -1070,8 +1127,8 @@ async function selectTrack(t) {
 /** The save bar, shown only once there is something to save. */
 function renderSaveBar() {
   const bar = $('#savebar');
-  bar.hidden = !editor.dirty;
-  if (!editor.dirty) return;
+  bar.hidden = !editor.dirty || readOnly();
+  if (bar.hidden) return;
   bar.replaceChildren();
   const n = editor.count;
   const tracks = editor.changes.size;

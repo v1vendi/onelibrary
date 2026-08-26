@@ -7,6 +7,10 @@ rekordbox's legacy DeviceSQL (`export.pdb`) USB exports.
 > **Status: pre-alpha.** The decryption layer works and is verified. The format
 > itself is still being reverse-engineered. Nothing here is stable yet.
 
+Both tools also **read** the legacy format, so a USB stick that has not been
+converted opens the same way — see [`spec/DEVICESQL.md`](spec/DEVICESQL.md).
+Neither writes it.
+
 **[Open the viewer →](https://v1vendi.github.io/onelibrary/)** — drag a USB
 stick onto the page and browse the library, then mix off it: a two-deck player
 with a mixer, beat sync and hot cues, playable from a **Pioneer DDJ-FLX4** over
@@ -20,7 +24,7 @@ it without one.
 |---|---|
 | **[`python/`](python)** | The `onelibrary` library and CLI — read and write exports, resolve keys, parse ANLZ. [README](python/README.md) |
 | **[`viewer/`](viewer)** | A browser viewer and two-deck player for the same format — decrypts in the page with WebCrypto, no server, DDJ-FLX4 over Web MIDI. [README](viewer/README.md) |
-| **[`spec/`](spec)** | The format specification: [`ONELIBRARY.md`](spec/ONELIBRARY.md) and the captured [`schema.sql`](spec/schema.sql) |
+| **[`spec/`](spec)** | The format specifications: [`ONELIBRARY.md`](spec/ONELIBRARY.md), the legacy [`DEVICESQL.md`](spec/DEVICESQL.md), and the captured [`schema.sql`](spec/schema.sql) |
 | **[`docs/`](docs)** | Reverse-engineering method — [`CAPTURING.md`](docs/CAPTURING.md) |
 
 The two implementations are independent: the viewer is plain JavaScript with no

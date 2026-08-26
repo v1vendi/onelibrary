@@ -588,6 +588,9 @@ button.pad.set:hover { background: var(--hot); color: var(--on-accent); }
   align-items: center; margin-bottom: 16px;
 }
 .editor .field { display: contents; }
+/* The read-only note stands in for the whole form, so it spans both columns
+   rather than being squeezed into the 84px one meant for a field label. */
+.editor .readonly { grid-column: 1 / -1; max-width: 420px; }
 .editor .field.changed label { color: var(--accent); }
 input.edit {
   font: inherit; font-size: var(--fs-body); padding: 5px 8px; width: 100%; max-width: 420px;

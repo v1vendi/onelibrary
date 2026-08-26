@@ -1,7 +1,9 @@
 # The OneLibrary format
 
 Reverse-engineering notes for the AlphaTheta / Pioneer DJ **OneLibrary** device
-format, successor to the legacy DeviceSQL `export.pdb`.
+format, successor to the legacy DeviceSQL `export.pdb`. That legacy format is
+already documented elsewhere; what this project reads of it is summarised in
+[`DEVICESQL.md`](DEVICESQL.md).
 
 Every claim below is tagged:
 
