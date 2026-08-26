@@ -312,15 +312,24 @@
    the bottom of every panel.
 
    Traced from GEN.BMP's gen-top (25x20), gen-middle-left (11x29),
-   gen-middle-right (8x29) and gen-bottom (25x14). Each edge is one gradient
-   with hard stops -- a sprite tiled along an edge is exactly that -- so the
-   bands land on whole pixels at any panel size.
+   gen-middle-right (8x29) and gen-bottom (25x14), then rebuilt as borders
+   rather than as four tiled images.
 
-   The corner pieces are not reproduced: Winamp draws each corner from its own
-   sprite, and the joins here are simply the top and bottom bands running the
-   full width over the sides. At these colours the difference is invisible;
-   it is called out because it is the one place this frame is an approximation
-   rather than a trace.
+   Each band of each sprite is one inset ring, and the rings are listed from
+   the outside in, so they nest. This is what fixes the corners. Four edge
+   images each own a strip and have to be joined at the corner, and every way
+   of ordering them leaves one line running over another; a ring has no join
+   to get wrong -- it already goes all the way round. Where two sides meet,
+   the ring listed first owns the corner pixel, which is the mitre.
+
+   Reading the sprites from the outside in also says what the frame is: all
+   four open with a dark pixel, and top and left carry a lit line inside it
+   while right and bottom do not. It is a bevel lit from the top-left, and
+   drawing it as rings says so, where four images only implied it.
+
+   The colours stay as sampled. The bitmap is not flat -- the jambs sit a
+   shade off the top band and the sill a good deal lighter than both -- so
+   nine values are named rather than three averaged ones.
    =========================================================================== */
 
 :root {
@@ -336,6 +345,7 @@
      Kept apart rather than averaged, so the outline is the skin's colours. */
   --wa-jamb-dark:  #1d1d2d;
   --wa-jamb-lit:   #6a6a7a;
+  --wa-jamb-face:  #2a2940;
 
   --wa-panel-top: 20px;   /* the header band, title included */
   --wa-panel-left: 11px;
@@ -350,82 +360,40 @@
   border: 0;
   border-radius: 0;
   outline: 0;
-  background-color: var(--wa-panel-face);
-  background-repeat: no-repeat;
-  background-image:
-    /* The outline, drawn first so it is continuous.
-       -------------------------------------------------------------------
-       Read from the outside in, the four sprites agree on an outer dark
-       ring, and top and left carry a lit line inside it while right and
-       bottom do not: the frame is a bevel lit from the top-left. Drawing
-       those two rings as whole rectangles is what makes the corners meet --
-       leave them to the four edge gradients and each one stops where the
-       next begins, which is the break.
+  background: var(--wa-panel-face);
 
-       The grooves deeper in cannot turn the corner: the title bar is ten
-       pixels deeper than the side jamb, so their inner dark grooves sit at
-       different depths and there is no honest way to join them without
-       GEN.BMP's four corner sprites, which are the pieces that do it. */
-    linear-gradient(var(--wa-panel-dark), var(--wa-panel-dark)),   /* top    */
-    linear-gradient(var(--wa-sill-dark),  var(--wa-sill-dark)),    /* bottom */
-    linear-gradient(var(--wa-jamb-dark),  var(--wa-jamb-dark)),    /* left   */
-    linear-gradient(var(--wa-jamb-dark),  var(--wa-jamb-dark)),    /* right  */
-    linear-gradient(var(--wa-panel-lit),  var(--wa-panel-lit)),    /* lit top */
-    linear-gradient(var(--wa-jamb-lit),   var(--wa-jamb-lit)),     /* lit left */
-    /* left jamb */
-    linear-gradient(90deg,
-      var(--wa-panel-dark) 0 1px,
-      var(--wa-panel-lit)  1px 2px,
-      var(--wa-panel-face) 2px 4px,
-      var(--wa-panel-dark) 4px 6px,
-      var(--wa-panel-lit)  6px 7px,
-      var(--wa-panel-face) 7px 11px),
-    /* right jamb */
-    linear-gradient(90deg,
-      var(--wa-panel-lit)  0 1px,
-      var(--wa-panel-face) 1px 4px,
-      var(--wa-panel-lit)  4px 5px,
-      var(--wa-panel-face) 5px 7px,
-      var(--wa-panel-dark) 7px 8px),
-    /* the header band: dark, a lit line, the title field, then a second
-       narrower band that starts the content well */
-    linear-gradient(180deg,
-      var(--wa-panel-dark) 0 1px,
-      var(--wa-panel-lit)  1px 2px,
-      var(--wa-panel-face) 2px 12px,
-      var(--wa-panel-dark) 12px 14px,
-      var(--wa-panel-lit)  14px 15px,
-      var(--wa-panel-face) 15px 19px,
-      var(--wa-panel-dark) 19px 20px),
-    /* the sill */
-    linear-gradient(180deg,
-      var(--wa-sill-lit)   0 1px,
-      var(--wa-sill-face)  1px 8px,
-      var(--wa-sill-dark)  8px 10px,
-      var(--wa-sill-lit)   10px 11px,
-      var(--wa-sill-face)  11px 13px,
-      var(--wa-sill-dark)  13px 14px);
-  /* The jambs are listed first, so they paint over the ends of the top band
-     and the sill. Drawn the other way round -- which is how this started --
-     the horizontal bands run across the corners, the vertical frame lines
-     stop dead where they meet them, and at the bottom the sill's lighter
-     palette butts straight into the jamb's darker one. Winamp gives every
-     corner its own sprite; short of those, letting one axis run unbroken is
-     what makes the frame read as continuous. */
-  background-position:
-    left 0 top 0, left 0 bottom 0, left 0 top 0, right 0 top 0,
-    left 1px top 1px, left 1px top 1px,
-    left 0 top 0, right 0 top 0, left 0 top 0, left 0 bottom 0;
-  background-size:
-    100% 1px, 100% 1px, 1px 100%, 1px 100%,
-    calc(100% - 2px) 1px, 1px calc(100% - 2px),
-    var(--wa-panel-left) 100%, var(--wa-panel-right) 100%,
-    100% var(--wa-panel-top), 100% var(--wa-panel-bottom);
+  box-shadow:
+    inset 0 1px 0 0 var(--wa-panel-dark),
+    inset 0 -1px 0 0 var(--wa-sill-dark),
+    inset 1px 0 0 0 var(--wa-jamb-dark),
+    inset -1px 0 0 0 var(--wa-jamb-dark),
+    inset 0 2px 0 0 var(--wa-panel-lit),
+    inset 2px 0 0 0 var(--wa-jamb-lit),
+    inset 0 -3px 0 0 var(--wa-sill-face),
+    inset -3px 0 0 0 var(--wa-jamb-face),
+    inset 0 -4px 0 0 var(--wa-sill-lit),
+    inset 4px 0 0 0 var(--wa-jamb-face),
+    inset -4px 0 0 0 var(--wa-jamb-lit),
+    inset 0 -6px 0 0 var(--wa-sill-dark),
+    inset 6px 0 0 0 var(--wa-jamb-dark),
+    inset 7px 0 0 0 var(--wa-jamb-lit),
+    inset -7px 0 0 0 var(--wa-jamb-face),
+    inset -8px 0 0 0 var(--wa-jamb-lit),
+    inset 11px 0 0 0 var(--wa-jamb-face),
+    inset 0 12px 0 0 var(--wa-panel-face),
+    inset 0 -13px 0 0 var(--wa-sill-face),
+    inset 0 14px 0 0 var(--wa-panel-dark),
+    inset 0 -14px 0 0 var(--wa-sill-lit),
+    inset 0 15px 0 0 var(--wa-panel-lit),
+    inset 0 19px 0 0 var(--wa-panel-face),
+    inset 0 20px 0 0 var(--wa-panel-dark);
+
   /* Content clears the frame on every side. */
   padding:
     var(--wa-panel-top) var(--wa-panel-right)
     var(--wa-panel-bottom) var(--wa-panel-left);
 }
+
 
 /* ===========================================================================
    Sliders

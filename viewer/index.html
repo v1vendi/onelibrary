@@ -1192,9 +1192,11 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 :root[data-skin="classic"] .knob-pointer { background: #101018; width: 3px; }
 :root[data-skin="classic"] .knob.killed .knob-pointer { background: #C01818; }
 
-/* Sections are windows, framed the way Winamp frames its own: the traced
-   GEN.BMP edges from `src/winamp.css`. The frame is padding, so the content
-   clears it on every side without any element needing to know its widths. */
+/* Sections are windows, framed the way Winamp frames its own -- the GEN.BMP
+   bands from `src/winamp.css`, each one an inset ring. Rings rather than four
+   edge images because a ring goes all the way round and so has no corner join
+   to get wrong. The frame is padding, so content clears it on every side
+   without any element needing to know its widths. */
 :root[data-skin="classic"] .deck,
 :root[data-skin="classic"] .mixer,
 :root[data-skin="classic"] #detail,
@@ -1203,28 +1205,32 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   border: 0;
   border-radius: 0;
   outline: 0;
-  background-color: var(--wa-panel-face);
-  background-repeat: no-repeat;
-  background-image:
-    linear-gradient(180deg,
-      var(--wa-panel-dark) 0 1px, var(--wa-panel-lit) 1px 2px,
-      var(--wa-panel-face) 2px 12px, var(--wa-panel-dark) 12px 14px,
-      var(--wa-panel-lit) 14px 15px, var(--wa-panel-face) 15px 19px,
-      var(--wa-panel-dark) 19px 20px),
-    linear-gradient(180deg,
-      var(--wa-sill-lit) 0 1px, var(--wa-sill-face) 1px 8px,
-      var(--wa-sill-dark) 8px 10px, var(--wa-sill-lit) 10px 11px,
-      var(--wa-sill-face) 11px 13px, var(--wa-sill-dark) 13px 14px),
-    linear-gradient(90deg,
-      var(--wa-panel-dark) 0 1px, var(--wa-panel-lit) 1px 2px,
-      var(--wa-panel-face) 2px 4px, var(--wa-panel-dark) 4px 6px,
-      var(--wa-panel-lit) 6px 7px, var(--wa-panel-face) 7px 11px),
-    linear-gradient(90deg,
-      var(--wa-panel-lit) 0 1px, var(--wa-panel-face) 1px 4px,
-      var(--wa-panel-lit) 4px 5px, var(--wa-panel-face) 5px 7px,
-      var(--wa-panel-dark) 7px 8px);
-  background-position: left 0 top 0, left 0 bottom 0, left 0 top 0, right 0 top 0;
-  background-size: 100% 20px, 100% 14px, 11px 100%, 8px 100%;
+  background: var(--wa-panel-face);
+  box-shadow:
+    inset 0 1px 0 0 var(--wa-panel-dark),
+    inset 0 -1px 0 0 var(--wa-sill-dark),
+    inset 1px 0 0 0 var(--wa-jamb-dark),
+    inset -1px 0 0 0 var(--wa-jamb-dark),
+    inset 0 2px 0 0 var(--wa-panel-lit),
+    inset 2px 0 0 0 var(--wa-jamb-lit),
+    inset 0 -3px 0 0 var(--wa-sill-face),
+    inset -3px 0 0 0 var(--wa-jamb-face),
+    inset 0 -4px 0 0 var(--wa-sill-lit),
+    inset 4px 0 0 0 var(--wa-jamb-face),
+    inset -4px 0 0 0 var(--wa-jamb-lit),
+    inset 0 -6px 0 0 var(--wa-sill-dark),
+    inset 6px 0 0 0 var(--wa-jamb-dark),
+    inset 7px 0 0 0 var(--wa-jamb-lit),
+    inset -7px 0 0 0 var(--wa-jamb-face),
+    inset -8px 0 0 0 var(--wa-jamb-lit),
+    inset 11px 0 0 0 var(--wa-jamb-face),
+    inset 0 12px 0 0 var(--wa-panel-face),
+    inset 0 -13px 0 0 var(--wa-sill-face),
+    inset 0 14px 0 0 var(--wa-panel-dark),
+    inset 0 -14px 0 0 var(--wa-sill-lit),
+    inset 0 15px 0 0 var(--wa-panel-lit),
+    inset 0 19px 0 0 var(--wa-panel-face),
+    inset 0 20px 0 0 var(--wa-panel-dark);
   padding: 20px 8px 14px 11px;
 }
 :root[data-skin="classic"] canvas.wave,
