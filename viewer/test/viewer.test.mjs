@@ -6,8 +6,10 @@ import { dirname, join } from 'node:path';
 
 import { decrypt, DecryptError } from '../src/sqlcipher.js';
 import { SQLiteDatabase, parseColumns, rowidAlias } from '../src/sqlite.js';
-import { parseAnlz, parseSections, CUE_TYPE } from '../src/anlz.js';
+import { parseAnlz, parseSections, parseCues, countCues, CUE_TYPE } from '../src/anlz.js';
 import { PdbDatabase, PdbError, looksLikePdb, readString } from '../src/pdb.js';
+import { validate, RULES, MAX_NAMED } from '../src/validate.js';
+import { deviceFileIndex, devicePath } from '../src/devicefiles.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(here, 'fixtures', 'sample.db');
@@ -220,6 +222,24 @@ test('the no-loop sentinel becomes null', () => {
   assert.equal(parseAnlz(f).cues[0].loopEndMs, null);
 });
 
+test('counting cues agrees with parsing them, without building the list', () => {
+  const f = buildAnlz(
+    buildPcob(1, [buildPcpt(1, 1, 24460), buildPcpt(3, 2, 39768, 42274)]),
+    buildPcob(0, [buildPcpt(0, 1, 0)])
+  );
+  const sections = parseSections(f);
+  const cues = parseCues(sections);
+  assert.deepEqual(countCues(sections), {
+    total: cues.length,
+    memory: cues.filter((c) => c.isMemory).length,
+  });
+  assert.deepEqual(countCues(sections), { total: 3, memory: 1 });
+});
+
+test('an ANLZ with no cue sections counts zero', () => {
+  assert.deepEqual(countCues(parseSections(buildAnlz())), { total: 0, memory: 0 });
+});
+
 test('merges sections across .DAT and .EXT', () => {
   const dat = buildAnlz(buildPcob(0, [buildPcpt(0, 1, 500)]));
   const ext = buildAnlz(buildPcob(1, [buildPcpt(2, 1, 900)]));
@@ -235,6 +255,298 @@ test('tolerates a missing sibling file', () => {
 
 test('throws when nothing is readable', () => {
   assert.throws(() => parseAnlz(null, null), /no readable ANLZ/);
+});
+
+// -- devicefiles ------------------------------------------------------------
+
+test('a stored path is matched without its leading slash, case-blind', () => {
+  assert.equal(devicePath('/Contents/Artist/TRACK.MP3'), 'contents/artist/track.mp3');
+  assert.equal(devicePath(null), '');
+});
+
+test('the device index resolves exactly, and through a folder prefix', () => {
+  const a = new Blob([]);
+  const find = deviceFileIndex(new Map([['myusb/contents/artist/track.mp3', a]]));
+  assert.equal(find('/Contents/Artist/track.mp3'), a);
+  assert.equal(find('/Contents/Other/track.mp3'), null);
+  assert.equal(find(''), null);
+});
+
+test('files sharing a basename resolve to the right one', () => {
+  // Every ANLZ on a device is called ANLZ0000.DAT, so the basename bucket is
+  // routinely deep -- the suffix still has to decide.
+  const one = new Blob(['1']);
+  const two = new Blob(['2']);
+  const find = deviceFileIndex(new Map([
+    ['usb/pioneer/usbanlz/p001/0000aaaa/anlz0000.dat', one],
+    ['usb/pioneer/usbanlz/p002/0000bbbb/anlz0000.dat', two],
+  ]));
+  assert.equal(find('/PIONEER/USBANLZ/P002/0000bbbb/ANLZ0000.DAT'), two);
+});
+
+// -- validate ---------------------------------------------------------------
+
+/** A device file: what the page holds after a drop, minus the browser. */
+const deviceFile = (bytes) => new Blob([bytes]);
+
+/** A device with one healthy track, which each test then breaks one way. */
+function device(overrides = {}, fileOverrides = null) {
+  const track = {
+    content_id: 1,
+    title: 'Alpha Track',
+    path: '/Contents/Artist/Album/alpha.mp3',
+    fileSize: 4,
+    analysisDataFilePath: '/PIONEER/USBANLZ/P001/0000abcd/ANLZ0000.DAT',
+    cueUpdateCount: 0,
+    ...overrides,
+  };
+  const anlz = buildAnlz(buildPcob(0, [buildPcpt(0, 1, 0)]));
+  const files = fileOverrides || new Map([
+    ['contents/artist/album/alpha.mp3', deviceFile(new Uint8Array(4))],
+    ['pioneer/usbanlz/p001/0000abcd/anlz0000.dat', deviceFile(anlz)],
+  ]);
+  return { tracks: [track], files };
+}
+
+/** The rules that fired, which is what every assertion below is about. */
+const fired = (result) => result.findings.map((f) => f.rule).sort();
+
+test('a healthy device reports nothing wrong', async () => {
+  const r = await validate(device());
+  assert.deepEqual(fired(r), []);
+  assert.equal(r.counts.error, 0);
+  assert.equal(r.checkedCount, 1);
+  // A validator that found nothing must be distinguishable from one that did
+  // not run, so the checks it did make are named.
+  assert.ok(r.passed.includes(RULES.fileMissing.title));
+});
+
+test('names the track whose audio file is gone', async () => {
+  const r = await validate(device({ path: '/Contents/Artist/Album/moved.mp3' }));
+  assert.deepEqual(fired(r), ['fileMissing']);
+  const [finding] = r.findings;
+  assert.equal(finding.severity, 'error');
+  assert.equal(finding.items[0].title, 'Alpha Track');
+  assert.match(finding.items[0].note, /moved\.mp3/);
+});
+
+test('a track with no path recorded is an error, not a missing file', async () => {
+  const r = await validate(device({ path: null }));
+  assert.ok(fired(r).includes('noPath'));
+  assert.ok(!fired(r).includes('fileMissing'));
+});
+
+test('a file that changed size since export is flagged', async () => {
+  const r = await validate(device({ fileSize: 9 }));
+  assert.deepEqual(fired(r), ['fileChanged']);
+  assert.match(r.findings[0].items[0].note, /-5 bytes/);
+});
+
+test('a device dropped as a folder still resolves its files', async () => {
+  // Every key carries the dropped folder's name, so no stored path matches
+  // exactly. Resolution falls back to the suffix.
+  const { tracks, files } = device();
+  const prefixed = new Map([...files].map(([k, v]) => [`myusb/${k}`, v]));
+  const r = await validate({ tracks, files: prefixed });
+  assert.deepEqual(fired(r), []);
+});
+
+test('a missing analysis file is reported, and not blamed on the cues', async () => {
+  const { tracks, files } = device();
+  files.delete('pioneer/usbanlz/p001/0000abcd/anlz0000.dat');
+  const r = await validate({ tracks, files });
+  assert.deepEqual(fired(r), ['analysisMissing']);
+});
+
+test('cue counts come back for the track list, split memory from hot', async () => {
+  const { tracks, files } = device();
+  files.set('pioneer/usbanlz/p001/0000abcd/anlz0000.dat',
+            deviceFile(buildAnlz(
+              buildPcob(1, [buildPcpt(1, 1, 24460), buildPcpt(2, 1, 50000)]),
+              buildPcob(0, [buildPcpt(0, 1, 0)])
+            )));
+  const r = await validate({ tracks, files });
+  // Having cues, or not having them, is an attribute of the track rather than
+  // a fault, so it is counted for the column and never reported as a finding.
+  assert.deepEqual(fired(r), []);
+  assert.deepEqual(r.cues.get(1), { memory: 1, hot: 2 });
+});
+
+test('a track with no cues at all counts zero, which is not a finding', async () => {
+  const { tracks, files } = device();
+  files.set('pioneer/usbanlz/p001/0000abcd/anlz0000.dat', deviceFile(buildAnlz()));
+  const r = await validate({ tracks, files });
+  assert.deepEqual(fired(r), []);
+  assert.deepEqual(r.cues.get(1), { memory: 0, hot: 0 });
+});
+
+test('a track whose analysis file is missing has no count to give', async () => {
+  const { tracks, files } = device();
+  files.delete('pioneer/usbanlz/p001/0000abcd/anlz0000.dat');
+  const r = await validate({ tracks, files });
+  // Absent, not zero: the column shows those differently, because "not counted"
+  // and "counted none" are not the same fact.
+  assert.equal(r.cues.has(1), false);
+});
+
+test('cues counted in the database but absent from the ANLZ are an error', async () => {
+  // The database keeps no cues -- rekordbox exports them to the ANLZ and
+  // leaves the `cue` table empty -- so `cueUpdateCount` is the only cross-check
+  // that the analysis file has not gone stale underneath it.
+  const { tracks, files } = device({ cueUpdateCount: 7 });
+  files.set('pioneer/usbanlz/p001/0000abcd/anlz0000.dat', deviceFile(buildAnlz()));
+  const r = await validate({ tracks, files });
+  assert.deepEqual(fired(r), ['cuesLost']);
+  assert.equal(r.findings[0].severity, 'error');
+  assert.match(r.findings[0].items[0].note, /7 cue edits/);
+});
+
+test('the two libraries on a converted device are compared', async () => {
+  const { tracks, files } = device();
+  const r = await validate({
+    tracks,
+    files,
+    legacyTracks: [
+      { content_id: 9, title: 'Alpha Track', path: '/Contents/Artist/Album/alpha.mp3' },
+      { content_id: 10, title: 'Ghost Track', path: '/Contents/Artist/Album/ghost.mp3' },
+    ],
+  });
+  assert.deepEqual(fired(r), ['onlyInLegacy']);
+  assert.equal(r.findings[0].items[0].title, 'Ghost Track');
+  // A legacy row is named, not identified: its id belongs to the PDB's own id
+  // space, so carrying it would invite the page to select an unrelated track.
+  assert.equal(r.findings[0].items[0].content_id, null);
+});
+
+test('libraries that agree are reported as agreeing', async () => {
+  const { tracks, files } = device();
+  const r = await validate({
+    tracks,
+    files,
+    legacyTracks: [{ content_id: 9, title: 'Alpha', path: '/Contents/Artist/Album/alpha.mp3' }],
+  });
+  assert.deepEqual(fired(r), []);
+  assert.ok(r.passed.includes(RULES.onlyInLegacy.title));
+});
+
+test('a device with no legacy library is not compared to one', async () => {
+  const r = await validate({ ...device(), legacyTracks: null });
+  assert.ok(!r.passed.includes(RULES.onlyInLegacy.title));
+});
+
+test('one unreadable track does not stop the rest of the run', async () => {
+  const { tracks, files } = device();
+  const broken = {
+    ...tracks[0],
+    content_id: 2,
+    title: 'Broken Track',
+    analysisDataFilePath: '/PIONEER/USBANLZ/P001/0000dead/ANLZ0000.DAT',
+  };
+  files.set('pioneer/usbanlz/p001/0000dead/anlz0000.dat', {
+    size: 8,
+    arrayBuffer: () => Promise.reject(new Error('I/O error')),
+  });
+  const r = await validate({ tracks: [broken, ...tracks], files });
+  assert.ok(fired(r).includes('unreadable'));
+  assert.equal(r.checkedCount, 2);
+  assert.equal(r.findings.find((f) => f.rule === 'unreadable').items[0].title, 'Broken Track');
+});
+
+test('a file that is not ANLZ at all is caught, not thrown', async () => {
+  const { tracks, files } = device();
+  files.set('pioneer/usbanlz/p001/0000abcd/anlz0000.dat', deviceFile(new Uint8Array(64)));
+  const r = await validate({ tracks, files });
+  assert.deepEqual(fired(r), ['unreadable']);
+  assert.match(r.findings[0].items[0].note, /not an ANLZ/);
+});
+
+test('a rule that fires on a whole library names some and counts all', async () => {
+  const { files } = device();
+  const many = Array.from({ length: MAX_NAMED + 25 }, (_, i) => ({
+    content_id: i + 1,
+    title: `Track ${i + 1}`,
+    path: '/Contents/Artist/Album/alpha.mp3',
+    analysisDataFilePath: '/PIONEER/USBANLZ/P001/0000abcd/ANLZ0000.DAT',
+  }));
+  files.delete('contents/artist/album/alpha.mp3');
+  const r = await validate({ tracks: many, files });
+  const missing = r.findings.find((f) => f.rule === 'fileMissing');
+  assert.equal(missing.count, MAX_NAMED + 25);
+  assert.equal(missing.items.length, MAX_NAMED);
+});
+
+test('findings keep track order even though the files are read in parallel', async () => {
+  const { files } = device();
+  const many = Array.from({ length: 40 }, (_, i) => ({
+    content_id: i + 1,
+    title: `Track ${i + 1}`,
+    path: `/Contents/missing-${i}.mp3`,
+  }));
+  const r = await validate({ tracks: many, files });
+  const named = r.findings.find((f) => f.rule === 'fileMissing').items.map((x) => x.content_id);
+  assert.deepEqual(named, many.map((t) => t.content_id));
+});
+
+test('"could not be checked" is never reported as a check that passed', async () => {
+  const r = await validate(device());
+  assert.ok(!r.passed.includes(RULES.unreadable.title));
+});
+
+test('the page\'s own resolver is used when one is passed in', async () => {
+  const { tracks } = device();
+  const asked = [];
+  const r = await validate({
+    tracks,
+    files: new Map(),
+    find: (p) => { asked.push(p); return { size: tracks[0].fileSize }; },
+  });
+  assert.ok(asked.includes(tracks[0].path));
+  // Resolved by the injected finder, so nothing is reported missing; the ANLZ
+  // it returns is not a real one, which is a separate finding.
+  assert.ok(!fired(r).includes('fileMissing'));
+});
+
+test('validating nothing is not an error', async () => {
+  const r = await validate({});
+  assert.deepEqual(fired(r), []);
+  assert.equal(r.trackCount, 0);
+});
+
+test('a cancelled run stops early and reports how far it got', async () => {
+  const { tracks, files } = device();
+  const many = Array.from({ length: 200 }, (_, i) => ({ ...tracks[0], content_id: i + 1 }));
+  const signal = { cancelled: false };
+  let seen = 0;
+  const r = await validate({
+    tracks: many,
+    files,
+    // Cancellation is checked once per track, so it takes effect within one
+    // pass of the read pool rather than waiting for a progress tick.
+    find: (p) => { if (++seen > 20) signal.cancelled = true; return files.get(p) || null; },
+    signal,
+  });
+  assert.equal(r.cancelled, true);
+  assert.ok(r.checkedCount < 200, `stopped at ${r.checkedCount}`);
+});
+
+test('findings are ordered worst first', async () => {
+  const { tracks, files } = device({ path: '/Contents/gone.mp3' });
+  tracks.push({ ...tracks[0], content_id: 2, title: 'Beta', path: '/Contents/Artist/Album/alpha.mp3' });
+  files.set('pioneer/usbanlz/p001/0000abcd/anlz0000.dat', deviceFile(buildAnlz()));
+  tracks[1].analysisDataFilePath = null;
+  const r = await validate({ tracks, files });
+  const order = r.findings.map((f) => f.severity);
+  assert.deepEqual(order, [...order].sort((a, b) =>
+    ['error', 'warn', 'info'].indexOf(a) - ['error', 'warn', 'info'].indexOf(b)));
+  assert.equal(order[0], 'error');
+});
+
+test('progress is reported, and ends on the total', async () => {
+  const { tracks, files } = device();
+  const seen = [];
+  await validate({ tracks, files, onProgress: (done, total) => seen.push([done, total]) });
+  assert.ok(seen.length > 0);
+  assert.deepEqual(seen.at(-1), [1, 1]);
 });
 
 // -- player -----------------------------------------------------------------

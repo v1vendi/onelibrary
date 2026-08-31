@@ -198,6 +198,64 @@ header h1 b { color: var(--accent); font-weight: 650; }
 #savebar button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 
 
+/* --- validation report ----------------------------------------------------- */
+
+/* Severity reuses the palette rather than adding to it: amber is already the
+   memory-cue colour, and a report is read next to the waveform that uses it. */
+#report {
+  padding: 12px 18px 14px;
+  background: var(--sunken); border-bottom: 1px solid var(--line);
+  max-height: 46vh; overflow-y: auto;
+}
+#report .rhead {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+#report .rhead h3 { margin: 0; font-size: var(--fs-body); font-weight: 650; }
+#report .tally { display: flex; gap: 10px; }
+#report .tally,
+#report .hint,
+#report .passed,
+#report li,
+#report .more { font-size: var(--fs-micro); }
+#report .tally b { font-weight: 650; }
+#report .tally .error { color: var(--err); }
+#report .tally .warn  { color: var(--memory); }
+#report .tally .info  { color: var(--ink-soft); }
+#report .rhead .close { margin-left: auto; }
+#report .clean { color: var(--ok); font-size: var(--fs-body); }
+#report .passed { color: var(--ink-soft); margin-top: 8px; }
+
+#report details {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+  padding: 8px 12px; margin-bottom: 6px;
+}
+#report details[data-sev="error"] { border-left: 3px solid var(--err); }
+#report details[data-sev="warn"]  { border-left: 3px solid var(--memory); }
+#report details[data-sev="info"]  { border-left: 3px solid var(--line); }
+#report summary { cursor: pointer; font-size: var(--fs-body); }
+#report summary .n {
+  font-variant-numeric: tabular-nums; font-weight: 650; margin-right: 8px;
+}
+#report .hint { color: var(--ink-soft); margin: 6px 0 8px; }
+#report ul { list-style: none; margin: 0; padding: 0; }
+#report li {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 3px 0; border-top: 1px solid var(--line);
+}
+#report li .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                  white-space: nowrap; }
+#report li button.who {
+  font: inherit; text-align: left; background: none; border: 0; padding: 0;
+  color: var(--accent); cursor: pointer;
+}
+#report li .note {
+  color: var(--ink-soft); flex: 0 1 auto; max-width: 45%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+#report .more { color: var(--ink-soft); padding-top: 4px; }
+
 /* --- decks ---------------------------------------------------------------- */
 
 #decks { margin-bottom: 18px; display: flex; flex-direction: column; gap: 10px; }
@@ -313,21 +371,6 @@ button.dbtn.sync { margin-left: auto; }
 button.dbtn.sync.on {
   background: var(--accent); color: var(--on-accent); border-color: var(--accent);
 }
-/* Latched in the classic skin is the pressed plate with the phosphor showing
-   through it, the same as the zoom and pitch-range switches. Declared here
-   rather than with the rest of the chrome because `.dbtn.sync.on` outranks the
-   block below and would otherwise take its background from whichever rule got
-   to set the shorthand. */
-:root[data-skin="classic"] button.dbtn.sync.on {
-  background-color: #101018;
-  background-image: var(--wa-sunken-image);
-  background-position: var(--wa-sunken-pos-2x);
-  background-size: var(--wa-sunken-size-2x);
-  background-repeat: no-repeat;
-  color: var(--phosphor);
-  border: 0;
-}
-
 .pads {
   display: grid; grid-template-columns: repeat(4, minmax(34px, 56px));
   gap: 4px; flex: 0 1 auto; margin-top: 2px;
@@ -673,7 +716,7 @@ tbody tr:hover { background: var(--sunken); }
 tbody tr.sel { background: var(--accent); color: var(--on-accent); }
 /* Every cell that sets its own colour must yield on the selected row, or it
    keeps a muted tone against the accent ground and drops out of contrast. */
-tbody tr.sel td, tbody tr.sel .stars { color: var(--on-accent); }
+tbody tr.sel td, tbody tr.sel .stars, tbody tr.sel td.cues span { color: var(--on-accent); }
 /* Keep every row one line tall: a wrapping artist name makes the table ragged
    and destroys the scannability the tabular figures are there to provide. */
 td.title, td.artist {
@@ -681,8 +724,11 @@ td.title, td.artist {
 }
 td.title  { font-weight: 550; max-width: 34ch; }
 td.artist { max-width: 22ch; color: var(--ink-soft); }
-/* Shed columns as room runs out: artist first, then the analysis figures, so
-   what survives on a phone is the title, its length and its rating. */
+/* Shed columns as room runs out: the tags first, being the widest and the most
+   easily read in the track panel instead, then the artist, then the analysis
+   figures, so what survives on a phone is the title, its length and its
+   rating. */
+@media (max-width: 1240px) { td.tags, th.tags { display: none; } }
 @media (max-width: 1040px) { td.artist, th.artist { display: none; } }
 @media (max-width: 700px) {
   td.key, th.key { display: none; }
@@ -690,10 +736,25 @@ td.artist { max-width: 22ch; color: var(--ink-soft); }
 }
 @media (max-width: 520px) {
   td.bpm, th.bpm { display: none; }
+  /* The cue counts are the narrowest column on the table, so they outlast
+     every figure beside them and go only when the phone layout takes over. */
+  td.cues, th.cues { display: none; }
   td.title { max-width: 14ch; }
 }
 td.num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
 td.swatch { width: 20px; }
+
+/* Cue counts carry the colours the cues themselves are drawn in, so the column
+   reads the same way as the waveform above it: amber memory, cyan hot. */
+td.cues { white-space: nowrap; font-variant-numeric: tabular-nums; }
+td.cues span { font-size: var(--fs-micro); font-weight: 650; }
+td.cues .memory { color: var(--memory); }
+td.cues .hot    { color: var(--hot); margin-left: 6px; }
+td.cues .unknown { color: var(--ink-soft); font-weight: 400; }
+td.tags {
+  color: var(--ink-soft); font-size: var(--fs-micro);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 20ch;
+}
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
 .stars { color: var(--star); letter-spacing: -1px; white-space: nowrap; }
 
@@ -814,6 +875,7 @@ canvas.wave.overview { height: 46px; border-top: 0; border-radius: 0 0 9px 9px; 
 :root[data-skin="classic"] .deck,
 :root[data-skin="classic"] .mixer,
 :root[data-skin="classic"] #detail,
+:root[data-skin="classic"] #report,
 :root[data-skin="classic"] #sidebar {
   background: linear-gradient(180deg,
     var(--chassis) 0%, var(--chassis-mid) 55%, var(--chassis-dark) 100%);
@@ -919,7 +981,19 @@ canvas.wave.overview { height: 46px; border-top: 0; border-radius: 0 0 9px 9px; 
   margin-bottom: 12px;
 }
 :root[data-skin="classic"] table { font-family: inherit; font-size: var(--fs-small); }
-:root[data-skin="classic"] thead { display: none; }
+/* The playlist gets its column headings, on the screen and in its type: dim
+   phosphor over a hairline, so the row labels the list without competing with
+   the entries under it. Winamp's own playlist had no headings, but a column of
+   cue counts and one of tags are not self-describing the way a title is. */
+:root[data-skin="classic"] th {
+  color: var(--phosphor-dim);
+  /* The screen's own line colour is all but invisible on black, so the rule
+     under the headings is drawn in the phosphor that lights the rest of it. */
+  border-bottom: 1px solid color-mix(in srgb, var(--phosphor-dim) 45%, transparent);
+  padding: 2px 6px 3px;
+  letter-spacing: .1em;
+}
+:root[data-skin="classic"] th.swatch { width: 12px; padding-left: 4px; }
 :root[data-skin="classic"] #list tbody { counter-reset: track; }
 :root[data-skin="classic"] td {
   border-bottom: 0; color: var(--phosphor);
@@ -934,10 +1008,13 @@ canvas.wave.overview { height: 46px; border-top: 0; border-radius: 0 0 9px 9px; 
 :root[data-skin="classic"] td.title { max-width: none; font-weight: 400; }
 :root[data-skin="classic"] td.artist { color: var(--phosphor); }
 :root[data-skin="classic"] td.swatch { width: 12px; padding-left: 4px; }
+:root[data-skin="classic"] td.tags { color: var(--phosphor-dim); }
+:root[data-skin="classic"] td.cues .unknown { color: var(--phosphor-dim); }
 :root[data-skin="classic"] .dot { width: 6px; height: 6px; }
 :root[data-skin="classic"] tbody tr:hover { background: #071807; }
 :root[data-skin="classic"] tbody tr.sel { background: var(--select); }
 :root[data-skin="classic"] tbody tr.sel td,
+:root[data-skin="classic"] tbody tr.sel td.cues span,
 :root[data-skin="classic"] tbody tr.sel td.title::before { color: #fff; }
 :root[data-skin="classic"] .stars { color: var(--phosphor); font-size: var(--fs-micro); }
 :root[data-skin="classic"] tbody tr.edited td.title { color: #fff; font-style: normal; }
@@ -945,6 +1022,15 @@ canvas.wave.overview { height: 46px; border-top: 0; border-radius: 0 0 9px 9px; 
 /* --- the player window ---------------------------------------------------- */
 
 :root[data-skin="classic"] #detail { background: var(--chassis); padding: 8px; }
+:root[data-skin="classic"] #report { background: var(--chassis); }
+:root[data-skin="classic"] #report details {
+  background: var(--screen); color: var(--phosphor); border-color: var(--screen-line);
+}
+:root[data-skin="classic"] #report .hint,
+:root[data-skin="classic"] #report li .note,
+:root[data-skin="classic"] #report .passed { color: var(--phosphor-dim); }
+:root[data-skin="classic"] #report li { border-color: var(--screen-line); }
+:root[data-skin="classic"] #report li button.who { color: var(--phosphor); }
 :root[data-skin="classic"] #detail h2 {
   color: var(--phosphor); font-size: var(--fs-small); font-weight: 400; letter-spacing: .02em;
 }
@@ -1075,8 +1161,12 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
 }
 
 /* A latched control is pressed and lit: the sunken plate, with the phosphor
-   showing through it rather than a colour wash over it. */
-:root[data-skin="classic"] button.rbtn.on {
+   showing through it rather than a colour wash over it. The sync lamp latches
+   the same way; it is named here rather than beside the accent rule it
+   overrides, because a selector outranks that rule on specificity and so does
+   not depend on which of the two is declared first. */
+:root[data-skin="classic"] button.rbtn.on,
+:root[data-skin="classic"] button.dbtn.sync.on {
   background-color: #101018;
   background-image: var(--wa-sunken-image);
   background-position: var(--wa-sunken-pos-2x);
@@ -1206,32 +1296,10 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   border-radius: 0;
   outline: 0;
   background: var(--wa-panel-face);
-  box-shadow:
-    inset 0 1px 0 0 var(--wa-panel-dark),
-    inset 0 -1px 0 0 var(--wa-sill-dark),
-    inset 1px 0 0 0 var(--wa-jamb-dark),
-    inset -1px 0 0 0 var(--wa-jamb-dark),
-    inset 0 2px 0 0 var(--wa-panel-lit),
-    inset 2px 0 0 0 var(--wa-jamb-lit),
-    inset 0 -3px 0 0 var(--wa-sill-face),
-    inset -3px 0 0 0 var(--wa-jamb-face),
-    inset 0 -4px 0 0 var(--wa-sill-lit),
-    inset 4px 0 0 0 var(--wa-jamb-face),
-    inset -4px 0 0 0 var(--wa-jamb-lit),
-    inset 0 -6px 0 0 var(--wa-sill-dark),
-    inset 6px 0 0 0 var(--wa-jamb-dark),
-    inset 7px 0 0 0 var(--wa-jamb-lit),
-    inset -7px 0 0 0 var(--wa-jamb-face),
-    inset -8px 0 0 0 var(--wa-jamb-lit),
-    inset 11px 0 0 0 var(--wa-jamb-face),
-    inset 0 12px 0 0 var(--wa-panel-face),
-    inset 0 -13px 0 0 var(--wa-sill-face),
-    inset 0 14px 0 0 var(--wa-panel-dark),
-    inset 0 -14px 0 0 var(--wa-sill-lit),
-    inset 0 15px 0 0 var(--wa-panel-lit),
-    inset 0 19px 0 0 var(--wa-panel-face),
-    inset 0 20px 0 0 var(--wa-panel-dark);
-  padding: 20px 8px 14px 11px;
+  box-shadow: var(--wa-panel-shadow);
+  padding:
+    var(--wa-panel-top) var(--wa-panel-right)
+    var(--wa-panel-bottom) var(--wa-panel-left);
 }
 :root[data-skin="classic"] canvas.wave,
 :root[data-skin="classic"] canvas.vis,
@@ -1279,12 +1347,14 @@ button.skin:focus-visible { outline: 2px solid var(--accent); outline-offset: 1p
   <span class="label">decrypts rekordbox exports in your browser</span>
   <span class="spacer"></span>
   <button class="skin sidetoggle" id="sidetoggle" type="button" aria-controls="sidebar">◂</button>
+  <button class="skin" id="verify" type="button" hidden>Check device</button>
   <button class="skin" id="decktoggle" type="button">Two decks</button>
   <button class="skin" id="midi" type="button">Connect FLX4</button>
   <button class="skin" id="skin" type="button">Classic skin</button>
 </header>
 <div id="status" hidden></div>
 <div id="savebar" hidden></div>
+<div id="report" hidden></div>
 
 <section id="dropzone">
   <h2>Drop a rekordbox device here</h2>

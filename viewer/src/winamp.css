@@ -16,16 +16,18 @@
 
    Each is published as three custom properties rather than a class, because a
    background stack cannot be inherited the way a colour can and CSS has no
-   mixins. Any selector adopts a surface in five lines:
+   mixins -- and because a pseudo-element, which is what a slider's track and
+   thumb are, can take neither. Any selector adopts a surface in five lines:
 
        background-color: var(--wa-face);
        background-image: var(--wa-raised-image);
-       background-position: var(--wa-raised-pos);
-       background-size: var(--wa-raised-size);
+       background-position: var(--wa-raised-pos-2x);
+       background-size: var(--wa-raised-size-2x);
        background-repeat: no-repeat;
 
    which is what the classic skin does to the viewer's own buttons and sliders,
-   and what any new control should do.
+   and what any new control should do. This file names no selector of its own:
+   it knows nothing about the page that adopts it.
    =========================================================================== */
 
 :root {
@@ -35,28 +37,26 @@
   --wa-sh1:     #adb5c6;  /* the shadow ramp, innermost of three            */
   --wa-sh2:     #7b8494;
   --wa-sh3:     #4a5a6b;  /* outermost, and the glyph's near edge           */
-  --wa-mid:     #97a8b9;  /* glyph core                                     */
   --wa-mitre-a: #8494a5;  /* the two blends where highlight meets ramp, at   */
   --wa-mitre-b: #526373;  /* the corners the light crosses                   */
   --wa-ink:     #080810;  /* label on a plate -- near-black, not black      */
-  --wa-bg:      #242439;  /* the case the plates sit on                     */
 
   /* -- bevel scale ---------------------------------------------------------
 
      Winamp drew at 1:1 on a 96dpi screen, where a one-pixel highlight against
      a three-pixel ramp is a clearly read edge. On a dense display the same
      edge is a hairline and the bevel that carries the whole look stops
-     registering, so the geometry is published at two scales and a control
-     picks one. Doubling the unit scales highlight, ramp and both mitres
-     together, so the plate keeps its proportions rather than growing a thicker
-     outline round a same-sized face.
+     registering, so the geometry is published doubled: the `-2x` lists scale
+     highlight, ramp and both mitres together, and the plate keeps its
+     proportions rather than growing a thicker outline round a same-sized face.
 
-     Two literal sets rather than one parameterised by a --wa-unit, because a
+     Literal lists rather than one set parameterised by a --wa-unit, because a
      custom property resolves its own var() references against the element it
      is *declared* on. A list built from var(--wa-unit) up here is already
      frozen at the root's value before it inherits anywhere, so a button
      setting --wa-unit: 2px on itself would change nothing -- measured, not
-     assumed. The colours carry no lengths, so --wa-*-image is shared. */
+     assumed. The colours carry no lengths, so --wa-*-image is shared across
+     scales, which is why only the pos/size lists carry the `-2x` suffix. */
   /* -- the layer stack -----------------------------------------------------
 
      Not box-shadow. Four inset shadows give the ramp cheaply, but they paint
@@ -87,52 +87,6 @@
     linear-gradient(var(--wa-sh1),     var(--wa-sh1));      /* 14 ramp in   */
   --wa-sunken-image: var(--wa-raised-image);
 
-  --wa-raised-pos:
-    right 0 top 0,
-    right 1px top 0,
-    left 0 bottom 0,
-    left 0 bottom 1px,
-    left 1px bottom 1px,
-    right 1px top 1px,
-    left 0 top 0,
-    left 0 top 0,
-    right 0 top 0,
-    left 0 bottom 0,
-    right 1px top 0,
-    left 0 bottom 1px,
-    right 2px top 0,
-    left 0 bottom 2px;
-  --wa-sunken-pos:
-    left 0 bottom 0,
-    left 1px bottom 0,
-    right 0 top 0,
-    right 0 top 1px,
-    right 1px top 1px,
-    left 1px bottom 1px,
-    right 0 bottom 0,
-    right 0 bottom 0,
-    left 0 top 0,
-    left 0 top 0,
-    left 1px top 0,
-    left 0 top 1px,
-    left 2px top 0,
-    left 0 top 2px;
-  --wa-raised-size:
-    1px 1px,
-    1px 1px,
-    1px 1px,
-    1px 1px,
-    1px 1px,
-    1px 2px,
-    calc(100% - 2px) 1px,
-    1px calc(100% - 2px),
-    1px 100%,
-    100% 1px,
-    1px 100%,
-    100% 1px,
-    1px 100%,
-    100% 1px;
-  --wa-sunken-size: var(--wa-raised-size);
   --wa-raised-pos-2x:
     right 0 top 0,
     right 2px top 0,
@@ -181,124 +135,7 @@
   --wa-sunken-size-2x: var(--wa-raised-size-2x);
 }
 
-/* Shorthands for the common cases. A control that already has its own layout
-   rules should set the five background properties directly instead, so that
-   this file never has to know the viewer's class names. */
-.wa-raised {
-  background-color: var(--wa-face);
-  background-image: var(--wa-raised-image);
-  background-position: var(--wa-raised-pos);
-  background-size: var(--wa-raised-size);
-  background-repeat: no-repeat;
-  border: 0;
-  border-radius: 0;
-  color: var(--wa-ink);
-}
-.wa-sunken {
-  background-color: var(--wa-sh1);
-  background-image: var(--wa-sunken-image);
-  background-position: var(--wa-sunken-pos);
-  background-size: var(--wa-sunken-size);
-  background-repeat: no-repeat;
-  border: 0;
-  border-radius: 0;
-}
 
-/* -- a transport key ------------------------------------------------------
-   The 21x16 of cbuttons, with a carved glyph centred in it. */
-.wa-btn {
-  position: relative;
-  box-sizing: border-box;
-  width: 21px;
-  height: 16px;
-  padding: 0;
-  cursor: pointer;
-  background-color: var(--wa-face);
-  background-image: var(--wa-raised-image);
-  background-position: var(--wa-raised-pos);
-  background-size: var(--wa-raised-size);
-  background-repeat: no-repeat;
-  border: 0;
-  border-radius: 0;
-}
-.wa-btn:active,
-.wa-btn[aria-pressed='true'] {
-  background-color: var(--wa-sh1);
-  background-position: var(--wa-sunken-pos);
-}
-.wa-btn:active > .wa-icon,
-.wa-btn[aria-pressed='true'] > .wa-icon { transform: translate(1px, 1px); }
-
-/* -- the glyph -------------------------------------------------------------
-
-   Winamp's glyphs are carved *into* the face: dark along the near inner edge,
-   white along the far one, a mid tone between. The bevel lives inside the
-   silhouette, which rules out drop-shadow -- that can only paint outside a
-   shape, and would grow a 10x10 glyph to 12x12.
-
-   Three layers instead, each masked, painted back to front:
-
-     the element  dark,  masked to S            -- and clips the two below it
-     ::before     white, masked to erode(S)     -- leaves dark on the near edge
-     ::after      mid,   masked to erode(S,-1)  -- leaves white on the far one
-
-   erode(S) is S shifted right and S shifted down, intersected: a true
-   one-pixel erosion. The obvious shift-by-(1,1) is wrong on diagonals, where
-   it cuts two pixels deep and leaves the carve twice as thick down one side of
-   a triangle.
-
-   Masking the element clips its whole subtree, so the shifted layers cannot
-   spill past the silhouette. Everything derives from one --icon: give it any
-   shape and the carving follows.
-
-   The box is inset 1px on the right because the frame is not symmetric -- one
-   pixel of highlight on the left against three of ramp on the right -- and
-   centring in the raw box would sit the glyph a pixel right of Winamp's. */
-.wa-icon {
-  position: absolute;
-  inset: 0 1px 0 0;
-  background: var(--wa-sh3);
-  -webkit-mask: var(--icon) no-repeat center;
-          mask: var(--icon) no-repeat center;
-}
-.wa-icon::before,
-.wa-icon::after { content: ''; position: absolute; inset: 0; }
-
-.wa-icon::before {
-  background: var(--wa-hi);
-  -webkit-mask-image: var(--icon), var(--icon);
-          mask-image: var(--icon), var(--icon);
-  -webkit-mask-position: calc(50% + 1px) 50%, 50% calc(50% + 1px);
-          mask-position: calc(50% + 1px) 50%, 50% calc(50% + 1px);
-  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
-  -webkit-mask-composite: source-in; mask-composite: intersect;
-}
-.wa-icon::after {
-  background: var(--wa-mid);
-  -webkit-mask-image: var(--icon), var(--icon), var(--icon), var(--icon);
-          mask-image: var(--icon), var(--icon), var(--icon), var(--icon);
-  -webkit-mask-position:
-    calc(50% + 1px) 50%, 50% calc(50% + 1px),
-    calc(50% - 1px) 50%, 50% calc(50% - 1px);
-  mask-position:
-    calc(50% + 1px) 50%, 50% calc(50% + 1px),
-    calc(50% - 1px) 50%, 50% calc(50% - 1px);
-  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
-  -webkit-mask-composite: source-in;
-          mask-composite: intersect, intersect, intersect;
-}
-
-/* -- icons -----------------------------------------------------------------
-   shape-rendering="crispEdges" keeps the mask's alpha hard, so the erosions
-   land on whole pixels instead of smearing along an antialiased edge. The
-   "previous" silhouette is traced from cbuttons; the rest are drawn to match. */
-.i-prev  { --icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" shape-rendering="crispEdges"><path d="M0 0h3v1h-3zM8 0h2v1h-2zM0 1h3v1h-3zM7 1h3v1h-3zM0 2h3v1h-3zM6 2h4v1h-4zM0 3h3v1h-3zM5 3h5v1h-5zM0 4h3v1h-3zM4 4h6v1h-6zM0 5h3v1h-3zM4 5h6v1h-6zM0 6h3v1h-3zM5 6h5v1h-5zM0 7h3v1h-3zM6 7h4v1h-4zM0 8h3v1h-3zM7 8h3v1h-3zM0 9h3v1h-3zM8 9h2v1h-2z"/></svg>'); }
-.i-next  { --icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" shape-rendering="crispEdges"><g transform="translate(10,0) scale(-1,1)"><path d="M0 0h3v1h-3zM8 0h2v1h-2zM0 1h3v1h-3zM7 1h3v1h-3zM0 2h3v1h-3zM6 2h4v1h-4zM0 3h3v1h-3zM5 3h5v1h-5zM0 4h3v1h-3zM4 4h6v1h-6zM0 5h3v1h-3zM4 5h6v1h-6zM0 6h3v1h-3zM5 6h5v1h-5zM0 7h3v1h-3zM6 7h4v1h-4zM0 8h3v1h-3zM7 8h3v1h-3zM0 9h3v1h-3zM8 9h2v1h-2z"/></g></svg>'); }
-.i-play  { --icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="7" height="10" shape-rendering="crispEdges"><path d="M0 0h2v1h-2zM0 1h3v1h-3zM0 2h4v1h-4zM0 3h5v1h-5zM0 4h6v1h-6zM0 5h6v1h-6zM0 6h5v1h-5zM0 7h4v1h-4zM0 8h3v1h-3zM0 9h2v1h-2z"/></svg>'); }
-.i-pause { --icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="8" height="10" shape-rendering="crispEdges"><path d="M0 0h3v10H0zM5 0h3v10H5z"/></svg>'); }
-.i-stop  { --icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" shape-rendering="crispEdges"><path d="M0 0h9v9H0z"/></svg>'); }
-.i-eject { --icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" shape-rendering="crispEdges"><path d="M4 0h1v1H4zM3 1h3v1H3zM2 2h5v1H2zM1 3h7v1H1zM0 4h9v1H0zM0 7h9v2H0z"/></svg>'); }
-.i-cue   { --icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" shape-rendering="crispEdges"><path d="M0 0h3v10H0zM5 0h5v1H5zM5 1h4v1H5zM5 2h3v1H5zM5 3h2v1H5zM5 4h1v1H5z"/></svg>'); }
 
 /* ===========================================================================
    The window frame
@@ -351,18 +188,12 @@
   --wa-panel-left: 11px;
   --wa-panel-right: 8px;
   --wa-panel-bottom: 14px;
-}
 
-.wa-panel {
-  /* The frame is padding, so the box has to include it -- otherwise every
-     panel grows by 19px across and 34px down and the edges land off-box. */
-  box-sizing: border-box;
-  border: 0;
-  border-radius: 0;
-  outline: 0;
-  background: var(--wa-panel-face);
-
-  box-shadow:
+  /* The frame itself, published like every other surface in this file: a
+     pseudo-element cannot carry a class, and a skin rule that wants the frame
+     on a selector it does not own cannot inherit one either. One declaration,
+     so a corrected offset is corrected everywhere it is drawn. */
+  --wa-panel-shadow:
     inset 0 1px 0 0 var(--wa-panel-dark),
     inset 0 -1px 0 0 var(--wa-sill-dark),
     inset 1px 0 0 0 var(--wa-jamb-dark),
@@ -387,12 +218,8 @@
     inset 0 15px 0 0 var(--wa-panel-lit),
     inset 0 19px 0 0 var(--wa-panel-face),
     inset 0 20px 0 0 var(--wa-panel-dark);
-
-  /* Content clears the frame on every side. */
-  padding:
-    var(--wa-panel-top) var(--wa-panel-right)
-    var(--wa-panel-bottom) var(--wa-panel-left);
 }
+
 
 
 /* ===========================================================================
@@ -453,30 +280,6 @@
     linear-gradient(var(--wa-grip-mid),    var(--wa-grip-mid)),     /* 15 blend  */
     linear-gradient(var(--wa-grip-sh),     var(--wa-grip-sh)),      /* 16 shade  */
     linear-gradient(var(--wa-grip-sh),     var(--wa-grip-sh));      /* 17 shade  */
-  background-position:
-    4px 4px, 4px 6px,
-    2px 0, 2px 10px,
-    0 0, 10px 0, 0 10px, 10px 10px,
-    1px 0, 1px 10px, 0 1px, 10px 1px,
-    1px 1px, 1px 1px,
-    2px 9px, 9px 1px,
-    2px 8px, 3px 8px, 8px 2px;
-  --wa-grip-pos:
-    4px 4px, 4px 6px,
-    2px 0, 2px 10px,
-    0 0, 10px 0, 0 10px, 10px 10px,
-    1px 0, 1px 10px, 0 1px, 10px 1px,
-    1px 1px, 1px 1px,
-    2px 9px, 9px 1px,
-    2px 8px, 3px 8px, 8px 2px;
-  --wa-grip-size:
-    3px 1px, 3px 1px,
-    7px 1px, 5px 1px,
-    1px 1px, 1px 1px, 1px 1px, 1px 1px,
-    9px 1px, 9px 1px, 1px 9px, 1px 9px,
-    8px 1px, 1px 9px,
-    8px 1px, 1px 9px,
-    1px 1px, 6px 1px, 1px 7px;
 
   /* The same plate at twice the size. Eleven pixels is what Winamp drew
      on a 96dpi screen; here it is a grip nobody can catch. */
@@ -499,42 +302,4 @@
 
 }
 
-/* The groove, six pixels across, drawn along whichever axis it travels. */
-.wa-groove-v,
-.wa-groove-h {
-  border: 0;
-  border-radius: 0;
-  background-repeat: no-repeat;
-  background-color: transparent;
-}
-.wa-groove-v {
-  background-image: linear-gradient(90deg,
-    var(--wa-groove-dark) 0 1px,
-    var(--wa-groove)      1px 5px,
-    var(--wa-groove-lit)  5px 6px);
-  background-size: 6px 100%;
-  background-position: center top;
-}
-.wa-groove-h {
-  background-image: linear-gradient(180deg,
-    var(--wa-groove-dark) 0 1px,
-    var(--wa-groove)      1px 5px,
-    var(--wa-groove-lit)  5px 6px);
-  background-size: 100% 6px;
-  background-position: left center;
-}
 
-/* The grabber. Eleven layers over a face, first on top -- the two grip lines,
-   then each edge of the plate, then the outline and its cut corners. */
-.wa-grip {
-  box-sizing: border-box;
-  width: 11px;
-  height: 11px;
-  border: 0;
-  border-radius: 0;
-  background-color: var(--wa-grip-face);
-  background-repeat: no-repeat;
-  background-image: var(--wa-grip-image);
-  background-position: var(--wa-grip-pos);
-  background-size: var(--wa-grip-size);
-}

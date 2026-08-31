@@ -14,6 +14,8 @@ import { fmtPosition, VIS_COLORS } from './player.js';
 import { Deck, PITCH_RANGES } from './deck.js';
 import { Editor, EDITABLE, saveEdits } from './editor.js';
 import { MidiController } from './midi.js';
+import { validate } from './validate.js';
+import { deviceFileIndex } from './devicefiles.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
@@ -64,13 +66,12 @@ let redrawFrame = null;
  * directions from centre while a volume fader tints from the bottom up.
  */
 function tintGroove(input, away) {
-  const mix = (a, b, t) => Math.round(a + (b - a) * t);
-  const REST = [0x2a, 0x9a, 0x16];
-  const HOT = [0xc6, 0xb3, 0x35];
   const t = Math.max(0, Math.min(1, away));
-  const c = REST.map((v, i) => mix(v, HOT[i], t));
+  // Both endpoints stay in the skin, which is where the rest of its palette
+  // lives: mixing them here rather than naming them means re-skinning the
+  // groove keeps working without a matching edit in this file.
   input.style.setProperty('--wa-groove',
-    `rgb(${c[0]}, ${c[1]}, ${c[2]})`);
+    `color-mix(in srgb, var(--wa-groove-hot) ${t * 100}%, var(--wa-groove-rest))`);
 }
 
 function scheduleRedraw(fn) {
@@ -164,14 +165,26 @@ const readOnly = () => state.format === 'devicesql';
  * A device converted to OneLibrary keeps its legacy files, so that older
  * players can still read it. Where both are present the newer one wins: it is
  * the one rekordbox now maintains, and the only one this page can write.
+ *
+ * Both are reported, because "this device carries two libraries" is a fact
+ * about the device and not about whichever feature asks next. The page browses
+ * `primary`; the device check reads `alternate` to see whether the two still
+ * agree. Only the handle is kept -- nothing parses the second library unless
+ * something asks for it.
  */
 function findDatabase(files) {
+  let modern = null;
   let legacy = null;
   for (const [path, file] of files) {
-    if (path.endsWith('exportlibrary.db')) return { path, file, format: 'onelibrary' };
-    if (path.endsWith('export.pdb')) legacy = { path, file, format: 'devicesql' };
+    if (!modern && path.endsWith('exportlibrary.db')) {
+      modern = { path, file, format: 'onelibrary' };
+    }
+    if (!legacy && path.endsWith('export.pdb')) {
+      legacy = { path, file, format: 'devicesql' };
+    }
+    if (modern && legacy) break;
   }
-  return legacy;
+  return { primary: modern || legacy, alternate: modern ? legacy : null };
 }
 
 /** Decrypt and open a OneLibrary database, or report why it could not be. */
@@ -214,7 +227,11 @@ async function openDeviceSql(found) {
 
 async function load(files) {
   state.files = files;
-  const found = findDatabase(files);
+  // One index over the device, built where the files arrive, so that every
+  // part of the page -- deck, artwork, analysis, the checker -- resolves a
+  // stored path the same way.
+  state.findFile = deviceFileIndex(files);
+  const { primary: found, alternate } = findDatabase(files);
   if (!found) {
     status(
       'No library found. Drop a device folder, or an exportLibrary.db or export.pdb file.',
@@ -229,6 +246,11 @@ async function load(files) {
   if (!db) return;
   state.db = db;
   state.format = found.format;
+  state.alternate = alternate;
+  // The report and the cue counts both describe the device that was checked,
+  // so neither outlives one being replaced.
+  state.report = null;
+  state.cueCounts = null;
 
   // Empty the decks, now that the new database is known to be readable and the
   // old one is definitely being replaced. A loaded deck holds the previous
@@ -242,6 +264,10 @@ async function load(files) {
     if (deck.syncOn) deck.disableSync();
     deck.unload();
   }
+
+  // Same reasoning for a device check still running: its findings are about
+  // the stick that is being replaced.
+  if (validationRun) validationRun.cancelled = true;
 
   // Edits are keyed by track id and can only be saved back to a OneLibrary
   // database. Carrying them into a library that cannot receive them would
@@ -265,8 +291,33 @@ function indexBy(rows, key) {
   return Object.fromEntries(rows.map((r) => [r[key], r]));
 }
 
+/**
+ * The My Tags on each track, by name.
+ *
+ * `myTag` is a two-level tree -- categories at the top, the tags themselves
+ * beneath -- and `myTag_content` assigns the leaves. Only the leaves are ever
+ * assigned, so the category a tag sits under is not needed to name it, which is
+ * as well: the `attribute` field that marks one from the other is not something
+ * this project has confirmed the meaning of.
+ */
+function tagsByTrack(tags, assignments) {
+  const name = indexBy(tags, 'myTag_id');
+  const out = new Map();
+  for (const a of assignments) {
+    const tag = name[a.myTag_id]?.name;
+    if (!tag) continue;
+    const have = out.get(a.content_id);
+    if (have) have.push(tag);
+    else out.set(a.content_id, [tag]);
+  }
+  return out;
+}
+
 function buildModel() {
   const db = state.db;
+  // A legacy library declares a different set of tables from a OneLibrary one,
+  // and neither declares every table this page knows how to use, so a reader
+  // has to tolerate the absence rather than check a schema first.
   const safe = (t) => { try { return db.select(t); } catch { return []; } };
   state.lookups = {
     artist: indexBy(safe('artist'), 'artist_id'),
@@ -277,9 +328,175 @@ function buildModel() {
     label: indexBy(safe('label'), 'label_id'),
   };
   state.tracks = safe('content');
+  state.tagsByTrack = tagsByTrack(safe('myTag'), safe('myTag_content'));
   state.playlists = safe('playlist');
   state.playlistContent = safe('playlist_content');
   state.property = safe('property')[0] || {};
+  // Tracks by id, built once with the model rather than per render: the
+  // playlist view and the device report both index the whole library, and
+  // `render()` runs on every sidebar click.
+  state.trackById = indexBy(state.tracks, 'content_id');
+}
+
+// -- device validation -----------------------------------------------------
+
+/**
+ * The device checker: a report on what is wrong with the stick, by name.
+ *
+ * Kept strictly to one side of the rest of the page. It reads `state` and it
+ * renders one panel; nothing else in the viewer depends on it, and nothing in
+ * it can stop a track loading or a deck playing. A device with two hundred
+ * broken tracks browses exactly as it did before the report was run -- the
+ * findings are information about the library, not a gate in front of it.
+ */
+let validationRun = null;
+
+/**
+ * The tracks in the *other* library on this device, if it carries one.
+ *
+ * `findDatabase` already identified it at load; only the handle was kept, so an
+ * ordinary load never pays for parsing a library the page does not show. It is
+ * read here and nowhere else.
+ */
+async function alternateTracks() {
+  if (!state.alternate) return null;
+  try {
+    const bytes = new Uint8Array(await state.alternate.file.arrayBuffer());
+    return new PdbDatabase(bytes).select('content');
+  } catch {
+    // An unreadable second library costs the comparison and nothing else.
+    return null;
+  }
+}
+
+async function runValidation(btn) {
+  if (validationRun) { validationRun.cancelled = true; return; }
+  if (!state.db) return;
+
+  const signal = { cancelled: false };
+  validationRun = signal;
+  const original = btn.textContent;
+  btn.textContent = 'Stop';
+  // The device this report will describe. A run holds its own reference to the
+  // track list, so one still going when a new stick is dropped would finish
+  // over the old device and post its findings against the new one.
+  const checking = state.db;
+
+  // Parsing the legacy library is a synchronous decode of every row in it, so
+  // it is started here and awaited at the call: the status line goes up first
+  // and the read overlaps the paint instead of stalling behind it.
+  const legacy = alternateTracks();
+  status('Checking device…');
+
+  try {
+    const result = await validate({
+      tracks: state.tracks,
+      find: state.findFile,
+      legacyTracks: await legacy,
+      signal,
+      onProgress: (done, total) => {
+        if (!signal.cancelled) status(`Checking device… ${done}/${total} tracks`);
+      },
+    });
+    if (state.db !== checking) return;
+    status('');
+    state.report = result;
+    // The counts came back with the report: the check is what reads every
+    // analysis file, so the cue column fills in as a by-product of running it.
+    state.cueCounts = result.cues;
+    render();
+  } catch (err) {
+    // `validate` is written not to reject; if it ever does, the page says so
+    // and carries on rather than leaving a button stuck on "Stop".
+    status(`The device check stopped: ${err?.message || err}`, 'error');
+  } finally {
+    validationRun = null;
+    btn.textContent = original;
+  }
+}
+
+/** Severity, as the tally names it. */
+const SEVERITY_NOUN = { error: 'error', warn: 'warning', info: 'note' };
+
+/** One rule's findings: the count, what it costs, and the tracks it names. */
+function findingBox(finding, byId) {
+  const box = el('details');
+  box.dataset.sev = finding.severity;
+  // Errors mean a track will not play; those are opened, the rest are not, so
+  // a library with a thousand untagged tracks still opens to one screen.
+  box.open = finding.severity === 'error';
+  const sum = el('summary');
+  sum.append(el('span', 'n', String(finding.count)));
+  sum.append(el('span', null, finding.title));
+  box.append(sum);
+  box.append(el('div', 'hint', finding.hint));
+
+  const list = el('ul');
+  for (const item of finding.items) {
+    const li = el('li');
+    // Findings that name a track the page is showing link to it. One that
+    // names a row from the other library on the device carries no id, so it is
+    // named and not linked -- no rule has to be special-cased here for that.
+    const track = item.content_id == null ? null : byId[item.content_id];
+    li.append(track
+      ? button('who', item.title, 'Show this track', () => selectTrack(track))
+      : el('span', 'who', item.title));
+    if (item.note) li.append(el('span', 'note', item.note));
+    list.append(li);
+  }
+  box.append(list);
+  if (finding.count > finding.items.length) {
+    box.append(el('div', 'more', `and ${finding.count - finding.items.length} more`));
+  }
+  return box;
+}
+
+/**
+ * Draw the report held in `state.report`, if there is one.
+ *
+ * Driven from state rather than written to directly, like every other piece of
+ * conditional chrome on the page -- the save bar derives its visibility from
+ * the editor, the status line from its message. `render()` runs on every
+ * playlist click, so a panel that was merely toggled would be cleared by any
+ * unrelated redraw while its reader was still reading it.
+ */
+function renderReport() {
+  const panel = $('#report');
+  const result = state.report;
+  panel.hidden = !result;
+  panel.replaceChildren();
+  if (!result) return;
+
+  const head = el('div', 'rhead');
+  const scope = result.cancelled
+    ? `Stopped after ${result.checkedCount} of ${result.trackCount} tracks`
+    : `${result.trackCount} track${result.trackCount === 1 ? '' : 's'} checked`;
+  head.append(el('h3', null, `Device check — ${scope}`));
+
+  const tally = el('div', 'tally');
+  for (const [sev, noun] of Object.entries(SEVERITY_NOUN)) {
+    const n = result.counts[sev];
+    if (!n) continue;
+    const item = el('span', sev);
+    item.append(el('b', null, String(n)));
+    item.append(document.createTextNode(` ${noun}${n === 1 ? '' : 's'}`));
+    tally.append(item);
+  }
+  head.append(tally);
+  head.append(button('close skin', 'Close', 'Hide this report',
+                     () => { state.report = null; renderReport(); }));
+  panel.append(head);
+
+  if (!result.findings.length) {
+    panel.append(el('div', 'clean', 'Nothing wrong found on this device.'));
+  }
+
+  const byId = state.trackById;
+  for (const finding of result.findings) panel.append(findingBox(finding, byId));
+
+  if (result.passed.length) {
+    panel.append(el('div', 'passed', `Passed: ${result.passed.join(' · ')}.`));
+  }
 }
 
 // -- rendering -------------------------------------------------------------
@@ -349,8 +566,46 @@ function visibleTracks() {
     .filter((x) => x.playlist_id === state.filter)
     .sort((a, b) => a.sequenceNo - b.sequenceNo)
     .map((x) => x.content_id);
-  const byId = indexBy(state.tracks, 'content_id');
+  const byId = state.trackById;
   return ids.map((id) => byId[id]).filter(Boolean);
+}
+
+/**
+ * The cue column: memory cues and hot cues, in the colours they are drawn in.
+ *
+ * Empty until the device check has run, because the counts are not in the
+ * database -- rekordbox exports cues to the analysis files and leaves the `cue`
+ * table empty -- and opening every analysis file on a stick is not something to
+ * do on the way to showing a track list. A dash therefore means "not counted",
+ * which is a different thing from a zero, and the two must not look alike.
+ */
+function cueCell(track) {
+  const td = el('td', 'cues');
+  const counts = state.cueCounts?.get(track.content_id);
+  if (!counts) {
+    td.append(el('span', 'unknown', '·'));
+    td.title = 'Run Check device to count cues';
+    return td;
+  }
+  const { memory, hot } = counts;
+  if (!memory && !hot) {
+    td.append(el('span', 'unknown', '0'));
+    td.title = 'No cues on this track';
+    return td;
+  }
+  if (memory) td.append(el('span', 'memory', `${memory}M`));
+  if (hot) td.append(el('span', 'hot', `${hot}H`));
+  td.title = `${memory} memory cue${memory === 1 ? '' : 's'}, `
+           + `${hot} hot cue${hot === 1 ? '' : 's'}`;
+  return td;
+}
+
+/** The My Tags column: what the track is tagged with, or nothing. */
+function tagCell(track) {
+  const tags = state.tagsByTrack?.get(track.content_id);
+  const td = el('td', 'tags', tags ? tags.join(', ') : '');
+  if (tags) td.title = tags.join(', ');
+  return td;
 }
 
 function renderList() {
@@ -359,8 +614,11 @@ function renderList() {
   const table = el('table');
   const thead = el('thead');
   const hr = el('tr');
-  for (const [h, cls] of [['', null], ['Title', null], ['Artist', 'artist'],
-                          ['BPM', 'r bpm'], ['Key', 'key'], ['Time', 'r'], ['Rating', null]]) {
+  // Every column is named, including the colour swatch: an unlabelled column
+  // is one the reader has to decode from its contents.
+  for (const [h, cls] of [['Colour', 'swatch'], ['Title', null], ['Artist', 'artist'],
+                          ['BPM', 'r bpm'], ['Key', 'key'], ['Time', 'r'],
+                          ['Rating', null], ['Cues', 'cues'], ['My Tags', 'tags']]) {
     hr.append(el('th', cls, h));
   }
   thead.append(hr);
@@ -390,6 +648,8 @@ function renderList() {
     tr.append(el('td', 'key', f.key));
     tr.append(el('td', 'num', fmtTime(t.length)));
     tr.append(el('td', 'stars', '★'.repeat(rating || 0)));
+    tr.append(cueCell(t));
+    tr.append(tagCell(t));
     tr.draggable = true;
     tr.ondragstart = (e) => {
       e.dataTransfer.setData('application/x-onelibrary-track', String(t.content_id));
@@ -446,9 +706,7 @@ async function loadSampleLibrary(btn) {
 
 /** Locate a device file by its stored path, which is device-relative. */
 function deviceFile(storedPath) {
-  if (!storedPath) return null;
-  const rel = storedPath.replace(/^\//, '').toLowerCase();
-  return state.files.get(rel) || [...state.files].find(([k]) => k.endsWith(rel))?.[1] || null;
+  return state.findFile?.(storedPath) || null;
 }
 
 async function artworkUrlFor(track) {
@@ -793,15 +1051,20 @@ function startDeckAnimation() {
 async function anlzFor(track) {
   const p = track.analysisDataFilePath;
   if (!p) return null;
-  const rel = p.replace(/^\//, '').toLowerCase();
   const dat = deviceFile(p);
-  const extKey = rel.replace(/\.dat$/, '.ext');
-  const ext = state.files.get(extKey) || [...state.files].find(([k]) => k.endsWith(extKey))?.[1];
+  // The `.EXT` sibling sits beside the `.DAT` and carries the colour waveform
+  // and the extended cues; the same resolver finds both.
+  const ext = deviceFile(p.replace(/\.dat$/i, '.EXT'));
   if (!dat && !ext) return null;
   try {
+    // Two independent reads off the device; awaited in sequence they cost two
+    // round-trips on every track selection, and the `.EXT` is much the larger.
+    const [datBytes, extBytes] = await Promise.all([
+      dat?.arrayBuffer(), ext?.arrayBuffer(),
+    ]);
     return parseAnlz(
-      dat ? new Uint8Array(await dat.arrayBuffer()) : null,
-      ext ? new Uint8Array(await ext.arrayBuffer()) : null
+      datBytes ? new Uint8Array(datBytes) : null,
+      extBytes ? new Uint8Array(extBytes) : null
     );
   } catch {
     return null;
@@ -1218,10 +1481,12 @@ function renderSaveBar() {
 function render() {
   $('#dropzone').hidden = true;
   $('#main').hidden = false;
+  $('#verify').hidden = !state.db;
   renderSidebar();
   renderList();
   renderDecks();
   renderSaveBar();
+  renderReport();
 }
 
 // -- wiring ----------------------------------------------------------------
@@ -1324,6 +1589,9 @@ export function init() {
     }
     await load(out);
   });
+
+  const verifyBtn = $('#verify');
+  if (verifyBtn) verifyBtn.onclick = () => runValidation(verifyBtn);
 
   const sampleBtn = $('#trysample');
   if (sampleBtn) sampleBtn.onclick = () => loadSampleLibrary(sampleBtn);

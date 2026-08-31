@@ -53,6 +53,8 @@ WASM blob and no external fetches:
 | `src/pdb.js` | The legacy DeviceSQL reader — pages, row index, the three string encodings |
 | `src/editor.js` | Track edits and saving |
 | `src/anlz.js` | ANLZ cues, beatgrid and waveforms |
+| `src/devicefiles.js` | Resolving a stored device path against the dropped files |
+| `src/validate.js` | The device check — missing files, lost cues, library drift |
 | `src/waveform.js` | Canvas rendering |
 | `src/player.js` | Web Audio playback and cue stepping |
 | `src/envelope.js` | Peak summary of decoded audio, for drawing |
@@ -257,6 +259,70 @@ The output is verified by `PRAGMA integrity_check` and
 `PRAGMA cipher_integrity_check` in SQLCipher itself, not just by reading it
 back with the same code that wrote it.
 
+## Checking a device
+
+**Check device** reads the whole stick and reports what is wrong with it, by
+name. rekordbox tells you something is wrong once you are already in the booth,
+and names a count rather than a filename; everything needed to name the tracks
+is on the device.
+
+| Check | What it catches |
+|---|---|
+| **Files** | The audio is not where the database says, or is not the size it recorded — moved, renamed, re-encoded or re-tagged after export. The track browses normally and fails when you load it. |
+| **Analysis** | The ANLZ file a track points at is missing, so it has no waveform, beatgrid or cues on the player. |
+| **Cues** | A track has *lost* cues: the database counts cue edits (`content.cueUpdateCount`) while the ANLZ holds none, meaning the analysis file went stale. |
+| **Libraries** | The two libraries on a converted device disagree. |
+
+How many cues a track has, and what it is tagged with, are **columns in the
+track list** rather than findings — see below. A finding is for something you
+have to act on; how a track is prepared is an attribute of it, and reads better
+down a column than as three thousand warnings.
+
+That last one is worth spelling out. A converted device keeps both formats:
+OneLibrary wins on players that understand it, and everything older reads
+`export.pdb`. If they have drifted, the stick plays differently depending on
+which CDJ it is plugged into, and nothing says so. The obvious framing — "when
+did this last sync?" — has no honest answer, because the legacy PDB records no
+export date and a file timestamp is rewritten by any copy. Whether the two
+*agree* is answerable exactly, and is the question underneath.
+
+Cues are read from ANLZ, not from the database. rekordbox does not populate the
+`cue` table on export — a device whose tracks carry hot cues, memory cues and
+saved loops has zero rows in it — so a checker written against that table would
+report every track on every device as having no cues.
+
+### Cues and My Tags in the track list
+
+The track list carries a **Cues** column and a **My Tags** column, and every
+column — the colour swatch included — is labelled.
+
+Cues read as `1M 2H`: one memory cue, two hot cues, in the same amber and cyan
+the waveform draws them in. The counts are not in the database — rekordbox
+exports cues to the analysis files and leaves the `cue` table empty — so they
+are filled in by **Check device**, which opens every analysis file anyway.
+Until it has run the column shows `·`, which is deliberately not the same as
+the `0` a track with no cues gets: not counted and counted none are different
+facts.
+
+My Tags are read straight from the database at load and are always current.
+Only the leaves of the tag tree are ever assigned, so naming them needs nothing
+from `myTag.attribute`, whose meaning this project has not confirmed.
+
+Two things the report is careful about:
+
+- **It never breaks the page.** Every track is checked inside its own
+  `try`/`catch`; one that cannot be read becomes a *Could not be checked*
+  finding and the run continues. The report is information about the library,
+  never a gate in front of it — a device with two hundred broken tracks browses,
+  plays and edits exactly as it did before the check was run.
+- **It runs on demand.** This is the only part of the viewer that opens every
+  file on the stick. It reads the `.DAT` for cues and never the `.EXT`, which is
+  most of the bytes on a device, reports progress, and stops when you press it
+  again.
+
+The findings are grouped by fault and sorted worst first; errors open, the rest
+fold away. Clicking a track selects it.
+
 ## Skins
 
 The classic Winamp look is the **default**. A modern skin ships alongside it —
@@ -346,6 +412,12 @@ track's colour prints as the band across the label.
   the device in place.
 - Phrase analysis (`PSSI`) and the 3-band waveform (`PWV4`) are parsed but not
   yet displayed.
+- The Cues column is empty until the device check has run: the counts live in
+  the analysis files, not the database.
+- The device check reports what the database and the analysis files disagree
+  about. It does not check whether a track is playable on any particular
+  player: the compatibility matrix is per model and per firmware, lives nowhere
+  in the format, and cannot be verified without the hardware.
 
 ## License
 

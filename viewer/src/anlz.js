@@ -79,6 +79,53 @@ function parseCueSection({ body, headerLen }, extended) {
   return { listType, cues };
 }
 
+/**
+ * Every cue in these sections, memory and hot together, in time order.
+ *
+ * Split out of `parseAnlz` so that a caller which only wants the cues -- the
+ * deck, which draws them -- can skip decoding waveforms it will not use.
+ */
+export function parseCues(sections) {
+  return cueSections(sections)
+    .flatMap(({ section, extended }) => parseCueSection(section, extended).cues)
+    .sort((a, b) => a.timeMs - b.timeMs);
+}
+
+/**
+ * How many cues a track has, and how many of those are memory cues.
+ *
+ * The same sections `parseCues` reads, tallied instead of collected. A caller
+ * asking only whether a track has cues -- the device validator, over every
+ * track on a stick -- would otherwise build a list per track, a second list to
+ * filter the memory cues out of it, and a sort of both that it then discards.
+ * The entries themselves still go through the one decoder, so the byte layout
+ * is described in a single place.
+ */
+export function countCues(sections) {
+  let total = 0;
+  let memory = 0;
+  for (const { section, extended } of cueSections(sections)) {
+    for (const cue of parseCueSection(section, extended).cues) {
+      total += 1;
+      if (cue.isMemory) memory += 1;
+    }
+  }
+  return { total, memory };
+}
+
+/**
+ * The cue lists to read, and which entry format each holds.
+ *
+ * `PCO2` supersedes `PCOB` where both are present: the two carry the same cues
+ * and the extended form adds colour, so reading both would double every cue.
+ */
+function cueSections(sections) {
+  const extended = sections.some((s) => s.tag === 'PCO2');
+  return sections
+    .filter((s) => s.tag === (extended ? 'PCO2' : 'PCOB'))
+    .map((section) => ({ section, extended }));
+}
+
 /** Beat markers: `{ beat, bpm, timeMs }`, beat being 1-4 within the bar. */
 export function parseBeatGrid(sections) {
   const s = sections.find((x) => x.tag === 'PQTZ');
@@ -151,14 +198,9 @@ export function parseAnlz(...buffers) {
       try { return parseSections(b); } catch { return []; }
     });
   if (!sections.length) throw new Error('no readable ANLZ data');
-  const extended = sections.some((s) => s.tag === 'PCO2');
-  const lists = sections
-    .filter((s) => s.tag === (extended ? 'PCO2' : 'PCOB'))
-    .map((s) => parseCueSection(s, extended));
-  const cues = lists.flatMap((l) => l.cues).sort((a, b) => a.timeMs - b.timeMs);
   return {
     tags: sections.map((s) => s.tag),
-    cues,
+    cues: parseCues(sections),
     beats: parseBeatGrid(sections),
     waveform: parseWaveform(sections),
   };
